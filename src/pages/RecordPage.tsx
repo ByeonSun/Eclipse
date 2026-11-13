@@ -7,8 +7,9 @@ import { useRoster } from '../data/RosterProvider'
 import { activeAt, fetchRun, saveBossRun } from '../lib/api'
 import { ACCEPTED_IMAGE_TYPES, BOSS_LEVELS, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS } from '../lib/constants'
 import { errorMessage, isMembershipConflict } from '../lib/errors'
-import { finalAttendees, matchOcrLines, type MatchItem } from '../lib/matching'
-import { cancelOcr, OcrCancelled, ocrStatusLabel, recognizeImage, type Rect } from '../lib/ocr'
+import { finalAttendees, matchNameTag, matchOcrLines, type MatchItem } from '../lib/matching'
+import { cancelOcr, OcrCancelled, ocrStatusLabel, recognizeImage, recognizeNameTags, type Rect } from '../lib/ocr'
+import type { RegionMark } from '../components/RegionSelector'
 import { href, navigate } from '../lib/router'
 import { formatKst, fromKstInputValue, toKstInputValue } from '../lib/time'
 
@@ -31,6 +32,31 @@ interface Shot {
 }
 
 type Method = 'exact' | 'alias' | 'manual'
+type OcrMode = 'nametag' | 'text'
+
+const MODE_KEY = 'hai.ocrMode'
+function loadMode(): OcrMode {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'text' ? 'text' : 'nametag'
+  } catch {
+    return 'nametag'
+  }
+}
+function saveMode(m: OcrMode) {
+  try {
+    localStorage.setItem(MODE_KEY, m)
+  } catch {
+    /* 저장 안 돼도 동작에는 문제 없음 */
+  }
+}
+
+const MARK_TONE: Record<MatchItem['status'], RegionMark['tone']> = {
+  exact: 'ok',
+  alias: 'info',
+  review: 'warn',
+  unregistered: 'danger',
+  excluded: 'muted',
+}
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -56,6 +82,9 @@ export function RecordPage({ editId }: { editId?: string }) {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [over, setOver] = useState(false)
+  const [mode, setModeState] = useState<OcrMode>(loadMode)
+  const modeRef = useRef(mode)
+  modeRef.current = mode
   const [editState, setEditState] = useState<{ loading: boolean; error: string | null; expected: string | null; cancelled: boolean }>(
     { loading: !!editId, error: null, expected: null, cancelled: false },
   )
@@ -173,15 +202,30 @@ export function RecordPage({ editId }: { editId?: string }) {
     const next = shots.find((s) => s.state === 'queued')
     if (!next) return
     patchShot(next.id, { state: 'running', progress: 0, statusText: 'OCR 준비 중', error: null })
-    recognizeImage(next.img, next.rect, (p) =>
-      patchShot(next.id, { progress: p.progress, statusText: ocrStatusLabel(p.status) }),
-    )
-      .then((lines) => {
-        const items = matchOcrLines(roster.index, lines, next.id)
-        patchShot(next.id, { state: 'done', progress: 1, statusText: '완료', items, lineCount: lines.length })
+    const onProgress = (p: { status: string; progress: number }) =>
+      patchShot(next.id, { progress: p.progress, statusText: ocrStatusLabel(p.status) })
+    const run: Promise<{ items: MatchItem[]; count: number }> =
+      modeRef.current === 'nametag'
+        ? recognizeNameTags(next.img, next.rect, onProgress).then((tags) => ({
+            items: tags
+              .map((t, i) => matchNameTag(roster.index, t, { sourceId: next.id, key: `${next.id}:${i}` }))
+              .filter((x): x is MatchItem => !!x),
+            count: tags.length,
+          }))
+        : recognizeImage(next.img, next.rect, onProgress).then((lines) => ({
+            items: matchOcrLines(roster.index, lines, next.id),
+            count: lines.length,
+          }))
+    run
+      .then(({ items, count }) => {
+        patchShot(next.id, { state: 'done', progress: 1, statusText: '완료', items, lineCount: count })
       })
       .catch((e) => {
-        if (e instanceof OcrCancelled) patchShot(next.id, { state: 'cancelled', statusText: '취소됨' })
+        if (e instanceof OcrCancelled)
+          // 방식 전환 등으로 이미 다시 대기열에 올린 경우는 건드리지 않는다
+          setShots((xs) =>
+            xs.map((s) => (s.id === next.id && s.state === 'running' ? { ...s, state: 'cancelled', statusText: '취소됨' } : s)),
+          )
         else
           patchShot(next.id, {
             state: 'error',
@@ -195,6 +239,16 @@ export function RecordPage({ editId }: { editId?: string }) {
 
   const retry = (id: string, rect?: Rect | null) =>
     patchShot(id, { state: 'queued', items: [], error: null, progress: 0, statusText: '대기 중', ...(rect !== undefined ? { rect } : {}) })
+
+  const setMode = (m: OcrMode) => {
+    if (m === mode) return
+    saveMode(m)
+    setModeState(m)
+    modeRef.current = m
+    if (shots.some((s) => s.state === 'running')) void cancelOcr()
+    // 이미 인식한 이미지는 새 방식으로 다시 인식 (수동 추가한 참여자는 그대로)
+    setShots((xs) => xs.map((s) => ({ ...s, state: 'queued', items: [], error: null, progress: 0, statusText: '대기 중' })))
+  }
 
   const removeShot = (id: string) => {
     const s = shots.find((x) => x.id === id)
@@ -327,6 +381,25 @@ export function RecordPage({ editId }: { editId?: string }) {
             <span className="small muted">이미지는 이 브라우저 안에서만 처리되고 서버에 올라가지 않습니다.</span>
           </div>
 
+          <div className="row" style={{ marginBottom: 10 }}>
+            <span className="small strong" id="ocr-mode-label">
+              인식 방식
+            </span>
+            <div className="segmented" role="group" aria-labelledby="ocr-mode-label">
+              <button type="button" aria-pressed={mode === 'nametag'} onClick={() => setMode('nametag')}>
+                게임 화면 이름표
+              </button>
+              <button type="button" aria-pressed={mode === 'text'} onClick={() => setMode('text')}>
+                글자 목록
+              </button>
+            </div>
+            <span className="small muted">
+              {mode === 'nametag'
+                ? '캐릭터 머리 위 파란·초록 이름표를 찾아 읽습니다.'
+                : '참여자 목록 창처럼 글자가 줄지어 있는 화면에 씁니다.'}
+            </span>
+          </div>
+
           <div
             className={`dropzone${over ? ' is-over' : ''}`}
             onDragOver={(e) => {
@@ -415,6 +488,13 @@ export function RecordPage({ editId }: { editId?: string }) {
                   value={s.rect}
                   onChange={(r) => retry(s.id, r)}
                   alt={`캡처 이미지 ${i + 1}`}
+                  marks={s.items
+                    .filter((it) => it.bbox)
+                    .map((it) => ({
+                      ...it.bbox!,
+                      tone: MARK_TONE[it.status],
+                      label: it.memberId ? (roster.byId.get(it.memberId)?.nickname ?? it.raw) : it.raw,
+                    }))}
                 />
                 <p className="small muted" style={{ margin: '6px 0' }}>
                   닉네임 목록 부분만 드래그해 영역을 지정하면 그 영역으로 다시 인식합니다.
@@ -439,7 +519,11 @@ export function RecordPage({ editId }: { editId?: string }) {
                 )}
                 {s.state === 'done' && s.items.length === 0 && (
                   <Notice tone="warn">
-                    <p>인식된 글자가 없습니다 ({s.lineCount}줄). 영역을 지정해 다시 시도하거나 직접 추가하세요.</p>
+                    <p>
+                      {mode === 'nametag'
+                        ? `이름표에서 길드원을 찾지 못했습니다 (후보 ${s.lineCount}곳). 이름이 보이는 부분을 영역 지정하거나, 인식 방식을 바꾸거나, 직접 추가하세요.`
+                        : `인식된 글자가 없습니다 (${s.lineCount}줄). 영역을 지정해 다시 시도하거나 직접 추가하세요.`}
+                    </p>
                   </Notice>
                 )}
               </article>
@@ -677,6 +761,7 @@ function MatchRow({
             </>
           )}
           {item.conflict && <span style={{ color: 'var(--warn)' }}> · {item.conflict} — 자동 매칭 차단</span>}
+          {item.reads && item.reads.length > 1 && <> · 읽은 값: {item.reads.join(' / ')}</>}
         </div>
         {!excluded && !auto && item.suggestions.length > 0 && !item.memberId && (
           <div className="row" style={{ gap: 4, marginTop: 4 }}>

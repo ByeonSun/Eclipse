@@ -6,6 +6,15 @@ import type { Rect } from '../lib/ocr'
  * 선택 상자는 이미지 크기에 대한 백분율로 그려서, 화면 크기가 바뀌어도 위치가 맞는다.
  * 키보드 사용자는 영역 지정 없이 전체 이미지 인식을 쓸 수 있다.
  */
+export interface RegionMark {
+  x: number
+  y: number
+  w: number
+  h: number
+  label: string
+  tone: 'ok' | 'info' | 'warn' | 'danger' | 'muted'
+}
+
 export function RegionSelector({
   src,
   naturalWidth,
@@ -13,6 +22,7 @@ export function RegionSelector({
   value,
   onChange,
   alt,
+  marks = [],
 }: {
   src: string
   naturalWidth: number
@@ -20,6 +30,8 @@ export function RegionSelector({
   value: Rect | null
   onChange: (r: Rect | null) => void
   alt: string
+  /** 이름표 모드에서 찾은 위치 표시 */
+  marks?: RegionMark[]
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
   const start = useRef<{ x: number; y: number } | null>(null)
@@ -66,6 +78,21 @@ export function RegionSelector({
         }}
       >
         <img src={src} alt={alt} draggable={false} />
+        {marks.map((m, i) => (
+          <div
+            key={i}
+            className={`region__mark region__mark--${m.tone}`}
+            aria-hidden="true"
+            style={{
+              left: pct(m.x, naturalWidth),
+              top: pct(m.y, naturalHeight),
+              width: pct(m.w, naturalWidth),
+              height: pct(m.h, naturalHeight),
+            }}
+          >
+            <span>{m.label}</span>
+          </div>
+        ))}
         {shown && (
           <div
             className="region__sel"

@@ -991,8 +991,40 @@ textarea {
   box-shadow: 0 0 0 9999px rgb(0 0 0 / 0.55);
   pointer-events: none;
 }
-.region > div {
-  overflow: hidden;
+.region__mark {
+  position: absolute;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+  pointer-events: none;
+  line-height: 1;
+}
+.region__mark span {
+  position: absolute;
+  left: -2px;
+  bottom: 100%;
+  margin-bottom: 1px;
+  padding: 1px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #111;
+  background: currentColor;
+  border-radius: 3px;
+}
+.region__mark--ok {
+  color: var(--ok);
+}
+.region__mark--info {
+  color: var(--info);
+}
+.region__mark--warn {
+  color: var(--warn);
+}
+.region__mark--danger {
+  color: var(--danger);
+}
+.region__mark--muted {
+  color: var(--muted);
 }
 
 .match-list {

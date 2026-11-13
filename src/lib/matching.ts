@@ -47,6 +47,10 @@ export interface MatchItem {
   /** 정확/별칭 일치였지만 정규화 키가 여러 사람에게 걸려 자동 매칭을 막은 경우 */
   conflict: string | null
   selected: boolean
+  /** 이름표 모드: 원본 이미지에서 찾은 위치 */
+  bbox?: { x: number; y: number; w: number; h: number }
+  /** 이름표 모드: 여러 전처리로 읽은 글자들 */
+  reads?: string[]
 }
 
 interface IndexEntry {
@@ -82,11 +86,11 @@ export function buildRosterIndex(members: RosterMember[]): RosterIndex {
 
 export const SUGGEST_THRESHOLD = 0.6
 
-export function suggest(index: RosterIndex, key: string, limit = 3): Suggestion[] {
+export function suggest(index: RosterIndex, key: string, limit = 3, threshold = SUGGEST_THRESHOLD): Suggestion[] {
   const best = new Map<string, Suggestion>()
   for (const { key: k, entry } of index.all) {
     const score = similarity(key, k)
-    if (score < SUGGEST_THRESHOLD) continue
+    if (score < threshold) continue
     const prev = best.get(entry.memberId)
     if (!prev || score > prev.score) {
       best.set(entry.memberId, {
@@ -221,6 +225,110 @@ export function matchOcrLines(index: RosterIndex, lines: OcrToken[], sourceId: s
     out.push(whole)
   }
   return out
+}
+
+// ---------------------------------------------------------------------------
+// 이름표 모드
+// ---------------------------------------------------------------------------
+/** 이름표는 글자가 작고 효과가 많아 추천 기준을 조금 낮춘다 (추천일 뿐, 자동 확정은 아님) */
+export const NAME_TAG_SUGGEST_THRESHOLD = 0.5
+/** 정확 일치로 인정하려면 서로 다른 전처리 결과 중 몇 개가 같은 이름이어야 하는지 */
+export const NAME_TAG_EXACT_VOTES = 2
+
+export interface NameTagInput {
+  box: { x: number; y: number; w: number; h: number }
+  reads: { text: string; confidence: number }[]
+}
+
+/**
+ * 한 이름표를 여러 전처리로 읽은 결과를 명단과 대조한다.
+ *  - 같은 길드원 이름(정확/별칭)이 2개 이상 전처리에서 나오고, 다른 길드원과 겹치지 않으면 → 정확/별칭 일치
+ *  - 아니면 가장 비슷한 읽기로 추천 후보(유사도 0.5 이상) → 확인 필요
+ *  - 추천이 없으면: 같은 글자가 2번 이상 읽힌 경우만 미등록으로 남기고, 나머지는 잡음으로 버린다(null)
+ */
+export function matchNameTag(index: RosterIndex, tag: NameTagInput, opts: { sourceId: string; key: string }): MatchItem | null {
+  const reads = tag.reads.map((r) => ({ ...r, cleaned: cleanOcrLine(r.text), norm: normalizeName(cleanOcrLine(r.text)) })).filter((r) => r.norm)
+  if (!reads.length) return null
+  const bestConf = Math.max(...reads.map((r) => r.confidence))
+  const base = {
+    key: opts.key,
+    sourceId: opts.sourceId,
+    ocrConfidence: bestConf,
+    conflict: null as string | null,
+    bbox: tag.box,
+    reads: [...new Set(reads.map((r) => r.cleaned))],
+  }
+
+  // 1) 투표
+  const votes = new Map<string, { count: number; via: 'nickname' | 'alias' }>()
+  const conflicts: string[] = []
+  for (const r of reads) {
+    const hits = index.byKey.get(r.norm) ?? []
+    const people = [...new Set(hits.map((h) => h.memberId))]
+    if (people.length > 1) {
+      conflicts.push(people.map((id) => index.members.get(id)?.nickname ?? id).join(', '))
+      continue
+    }
+    if (people.length === 1) {
+      const prev = votes.get(people[0])
+      const via = hits.some((h) => h.via === 'nickname') ? 'nickname' : 'alias'
+      votes.set(people[0], { count: (prev?.count ?? 0) + 1, via: prev?.via === 'nickname' ? 'nickname' : via })
+    }
+  }
+  const ranked = [...votes.entries()].sort((a, b) => b[1].count - a[1].count)
+  if (ranked.length === 1 && ranked[0][1].count >= NAME_TAG_EXACT_VOTES && !conflicts.length) {
+    const [memberId, v] = ranked[0]
+    const status: MatchStatus = v.via === 'nickname' ? 'exact' : 'alias'
+    const raw = index.members.get(memberId)?.nickname ?? reads[0].cleaned
+    return { ...base, raw, cleaned: raw, status, originalStatus: status, memberId, suggestions: [], selected: true }
+  }
+
+  // 2) 추천
+  const pool = new Map<string, Suggestion>()
+  let bestRead = reads[0]
+  let bestScore = -1
+  for (const r of reads) {
+    for (const s of suggest(index, r.norm, 5, NAME_TAG_SUGGEST_THRESHOLD)) {
+      const prev = pool.get(s.memberId)
+      if (!prev || s.score > prev.score) pool.set(s.memberId, s)
+      if (s.score > bestScore) {
+        bestScore = s.score
+        bestRead = r
+      }
+    }
+  }
+  const suggestions = [...pool.values()].sort((a, b) => b.score - a.score).slice(0, 3)
+  if (suggestions.length || conflicts.length) {
+    return {
+      ...base,
+      raw: bestRead.cleaned,
+      cleaned: bestRead.cleaned,
+      status: 'review',
+      originalStatus: 'review',
+      memberId: null,
+      suggestions,
+      conflict: conflicts.length ? `여러 길드원과 일치: ${conflicts[0]}` : null,
+      selected: false,
+    }
+  }
+
+  // 3) 미등록 또는 잡음
+  const counts = new Map<string, number>()
+  for (const r of reads) counts.set(r.norm, (counts.get(r.norm) ?? 0) + 1)
+  const [topNorm, topCount] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
+  const top = reads.find((r) => r.norm === topNorm)!
+  const plausible = topCount >= 2 && [...top.cleaned].length >= 2 && /[가-힣A-Za-z]/.test(top.cleaned)
+  if (!plausible) return null
+  return {
+    ...base,
+    raw: top.cleaned,
+    cleaned: top.cleaned,
+    status: 'unregistered',
+    originalStatus: 'unregistered',
+    memberId: null,
+    suggestions: [],
+    selected: false,
+  }
 }
 
 export interface FinalAttendee {

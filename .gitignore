@@ -29,3 +29,8 @@ dist-ssr
 !.env.example
 .claude/settings.local.json
 
+
+# 실제 게임 캡처 표본 (개인 화면, 저장소에 올리지 않음)
+samples/
+public/__samples/
+
