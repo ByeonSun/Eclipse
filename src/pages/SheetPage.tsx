@@ -95,11 +95,12 @@ export function SheetPage() {
   const ariaSort = (key: SortKey) => (sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none')
 
   const exportCsv = () => {
-    const header = ['닉네임', '상태', '개인 참여율(모든 레벨)', '참여(모든 레벨)', '참여 가능(모든 레벨)']
+    const header = ['닉네임', '직업', '상태', '개인 참여율(모든 레벨)', '참여(모든 레벨)', '참여 가능(모든 레벨)']
     for (const l of BOSS_LEVELS) header.push(`${l} 참여율`, `${l} 참여`, `${l} 가능`)
     const data = rows.map((r) => {
       const out: (string | number)[] = [
         r.member.nickname,
+        r.member.job ?? '',
         memberStatus(r.member).label,
         formatRate(r.stats.total.attended, r.stats.total.eligible),
         r.stats.total.attended,
@@ -145,7 +146,7 @@ export function SheetPage() {
             id="sheet-filter"
             className="input input--sm"
             style={{ maxWidth: 240 }}
-            placeholder="표 안에서 거르기 (닉네임·별칭)"
+            placeholder="표 안에서 거르기 (닉네임)"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
@@ -208,6 +209,7 @@ export function SheetPage() {
                       <a className="row-link" href={href(`/members/${r.member.id}?${periodToQuery(period)}`)}>
                         {r.member.nickname}
                       </a>{' '}
+                      {r.member.job && <span className="small muted">{r.member.job}</span>}{' '}
                       {st.tone !== 'active' && <MemberStatusBadge {...st} />}
                     </th>
                     <RateCell

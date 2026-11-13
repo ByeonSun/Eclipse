@@ -1,3 +1,4 @@
+import type { Job } from './constants'
 import { db } from './supabase'
 import type { StatRow } from './stats'
 
@@ -13,6 +14,7 @@ export interface PeriodRow {
 export interface Member {
   id: string
   nickname: string
+  job: Job | null
   archived_at: string | null
   created_at: string
   updated_at: string
@@ -80,7 +82,7 @@ export async function fetchRoster(): Promise<Member[]> {
     db()
       .from('members')
       .select(
-        'id,nickname,archived_at,created_at,updated_at,member_aliases(id,alias),membership_periods(id,joined_at,left_at)',
+        'id,nickname,job,archived_at,created_at,updated_at,member_aliases(id,alias),membership_periods(id,joined_at,left_at)',
       )
       .order('nickname')
       .order('id')
@@ -97,7 +99,11 @@ export interface NewMemberInput {
   nickname: string
   joined_at: string
   left_at?: string | null
-  aliases?: string[]
+  job?: Job | null
+}
+
+export async function setJob(id: string, job: Job | null) {
+  check(await db().from('members').update({ job }).eq('id', id))
 }
 
 export async function createMembers(rows: NewMemberInput[]): Promise<string[]> {

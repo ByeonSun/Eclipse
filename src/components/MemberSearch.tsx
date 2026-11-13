@@ -138,6 +138,7 @@ export function MemberSearch({
                 >
                   <span>
                     <span className="strong">{m.nickname}</span>
+                    {m.job && <small> · {m.job}</small>}
                     {alias && <small> · 별칭 “{alias}”</small>}
                   </span>
                   <MemberStatusBadge {...st} />

@@ -88,7 +88,7 @@ export function MemberDetailPage({ id }: { id: string }) {
             {member.nickname} <MemberStatusBadge {...st} />
           </h1>
           <p>
-            {member.member_aliases.length > 0 && <>별칭: {member.member_aliases.map((a) => a.alias).join(', ')} · </>}
+            직업: {member.job ?? '미선택'} ·
             가입·탈퇴:{' '}
             {member.membership_periods
               .map((p) => `${formatKst(p.joined_at, { weekday: false })} ~ ${p.left_at ? formatKst(p.left_at, { weekday: false }) : '현재'}`)

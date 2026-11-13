@@ -2,20 +2,20 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Dialog, Empty, ErrorNotice, Loading, MemberStatusBadge, Notice, useToast } from '../components/ui'
 import { useRoster } from '../data/RosterProvider'
 import {
-  addAlias,
   addPeriod,
   createMembers,
-  deleteAlias,
   deleteMember,
   deletePeriod,
   memberHasAttendance,
   memberStatus,
   renameMember,
   setArchived,
+  setJob,
   updatePeriod,
   type Member,
   type PeriodRow,
 } from '../lib/api'
+import { JOBS, type Job } from '../lib/constants'
 import { csvBlob, downloadBlob } from '../lib/csv'
 import { errorMessage } from '../lib/errors'
 import { parseMemberCsv, parseNicknameList, validateImportRows, type ImportRow } from '../lib/memberImport'
@@ -83,17 +83,46 @@ export function MembersPage() {
   )
 }
 
+function JobSelect({
+  id,
+  value,
+  onChange,
+  required,
+}: {
+  id: string
+  value: Job | ''
+  onChange: (v: Job | '') => void
+  required?: boolean
+}) {
+  return (
+    <select
+      id={id}
+      className="select"
+      style={{ minWidth: 130 }}
+      value={value}
+      required={required}
+      onChange={(e) => onChange(e.target.value as Job | '')}
+    >
+      <option value="">{required ? '선택하세요' : '선택 안 함'}</option>
+      {JOBS.map((j) => (
+        <option key={j} value={j}>
+          {j}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 function exportMembers(members: Member[]) {
-  const rows: (string | null)[][] = [['닉네임', '가입일시', '탈퇴일시', '별칭', '상태', 'member_id']]
+  const rows: (string | null)[][] = [['닉네임', '가입일시', '탈퇴일시', '직업', '상태', 'member_id']]
   for (const m of members) {
-    const aliases = m.member_aliases.map((a) => a.alias).join('|')
     const periods = m.membership_periods.length ? m.membership_periods : [null]
     for (const p of periods) {
       rows.push([
         m.nickname,
         p ? formatKst(p.joined_at, { weekday: false }) : '',
         p?.left_at ? formatKst(p.left_at, { weekday: false }) : '',
-        aliases,
+        m.job ?? '',
         memberStatus(m).label,
         m.id,
       ])
@@ -112,7 +141,7 @@ function MemberList({ onEdit }: { onEdit: (m: Member) => void }) {
   const [status, setStatus] = useState<StatusFilter>('active')
   const [nick, setNick] = useState('')
   const [joined, setJoined] = useState(() => toKstInputValue(new Date()))
-  const [aliases, setAliases] = useState('')
+  const [job, setJobValue] = useState<Job | ''>('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -134,21 +163,18 @@ function MemberList({ onEdit }: { onEdit: (m: Member) => void }) {
     const at = fromKstInputValue(joined)
     if (!nick.trim()) return setError('닉네임을 입력하세요.')
     if (!at) return setError('가입 시각을 확인하세요.')
-    const aliasList = aliases
-      .split(',')
-      .map((a) => a.trim())
-      .filter(Boolean)
+    if (!job) return setError('직업을 선택하세요.')
     const checked = validateImportRows(
-      [{ line: 1, nickname: nick.trim(), joinedAt: at, leftAt: null, aliases: aliasList, errors: [], warnings: [] }],
+      [{ line: 1, nickname: nick.trim(), joinedAt: at, leftAt: null, job, errors: [], warnings: [] }],
       existingNames(roster.members),
     )[0]
     if (checked.errors.length) return setError(checked.errors.join(' '))
     setBusy(true)
     try {
-      await createMembers([{ nickname: nick.trim(), joined_at: at.toISOString(), aliases: aliasList }])
+      await createMembers([{ nickname: nick.trim(), joined_at: at.toISOString(), job }])
       toast('ok', `${nick.trim()} 님을 등록했습니다.`)
       setNick('')
-      setAliases('')
+      setJobValue('')
       await roster.reload()
     } catch (err) {
       setError(errorMessage(err))
@@ -173,9 +199,9 @@ function MemberList({ onEdit }: { onEdit: (m: Member) => void }) {
             <label htmlFor="new-joined">가입 시각 (KST)</label>
             <input id="new-joined" className="input" type="datetime-local" value={joined} onChange={(e) => setJoined(e.target.value)} />
           </div>
-          <div className="field mb-0" style={{ flex: '1 1 200px' }}>
-            <label htmlFor="new-aliases">OCR 별칭 (쉼표로 구분, 선택)</label>
-            <input id="new-aliases" className="input" value={aliases} onChange={(e) => setAliases(e.target.value)} />
+          <div className="field mb-0">
+            <label htmlFor="new-job">직업</label>
+            <JobSelect id="new-job" value={job} onChange={setJobValue} required />
           </div>
           <button type="submit" className="btn btn--primary" disabled={busy}>
             {busy ? '등록 중…' : '등록'}
@@ -192,7 +218,7 @@ function MemberList({ onEdit }: { onEdit: (m: Member) => void }) {
           className="input"
           style={{ maxWidth: 280 }}
           type="search"
-          placeholder="닉네임·별칭 검색"
+          placeholder="닉네임 검색"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -228,7 +254,7 @@ function MemberList({ onEdit }: { onEdit: (m: Member) => void }) {
               <tr>
                 <th scope="col">닉네임</th>
                 <th scope="col">상태</th>
-                <th scope="col">별칭</th>
+                <th scope="col">직업</th>
                 <th scope="col">가입·탈퇴 이력 (KST)</th>
                 <th scope="col">
                   <span className="sr-only">관리</span>
@@ -246,7 +272,7 @@ function MemberList({ onEdit }: { onEdit: (m: Member) => void }) {
                   <td>
                     <MemberStatusBadge {...memberStatus(m)} />
                   </td>
-                  <td style={{ whiteSpace: 'normal' }}>{m.member_aliases.map((a) => a.alias).join(', ') || <span className="muted">-</span>}</td>
+                  <td>{m.job ?? <span className="muted">미선택</span>}</td>
                   <td className="small" style={{ whiteSpace: 'normal' }}>
                     {m.membership_periods
                       .map((p) => `${kstDateString(new Date(p.joined_at))} ~ ${p.left_at ? kstDateString(new Date(p.left_at)) : '현재'}`)
@@ -296,7 +322,7 @@ function ImportPreview({ rows, onDone, onReset }: { rows: ImportRow[]; onDone: (
             nickname: r.nickname,
             joined_at: r.joinedAt!.toISOString(),
             left_at: r.leftAt?.toISOString() ?? null,
-            aliases: r.aliases,
+            job: r.job,
           })),
         )
       }
@@ -341,7 +367,7 @@ function ImportPreview({ rows, onDone, onReset }: { rows: ImportRow[]; onDone: (
               <th scope="col">닉네임</th>
               <th scope="col">가입</th>
               <th scope="col">탈퇴</th>
-              <th scope="col">별칭</th>
+              <th scope="col">직업</th>
               <th scope="col">확인</th>
             </tr>
           </thead>
@@ -352,7 +378,7 @@ function ImportPreview({ rows, onDone, onReset }: { rows: ImportRow[]; onDone: (
                 <td>{r.nickname || <span className="muted">(빈 값)</span>}</td>
                 <td>{r.joinedAt ? formatKst(r.joinedAt, { weekday: false }) : '-'}</td>
                 <td>{r.leftAt ? formatKst(r.leftAt, { weekday: false }) : '-'}</td>
-                <td>{r.aliases.join(', ')}</td>
+                <td>{r.job ?? <span className="muted">미선택</span>}</td>
                 <td style={{ whiteSpace: 'normal' }}>
                   {r.errors.length ? (
                     <span style={{ color: 'var(--danger)' }}>
@@ -377,12 +403,13 @@ function ImportPreview({ rows, onDone, onReset }: { rows: ImportRow[]; onDone: (
 function BulkImport({ onDone }: { onDone: () => void }) {
   const [text, setText] = useState('')
   const [joined, setJoined] = useState(() => toKstInputValue(new Date()))
+  const [job, setJobValue] = useState<Job | ''>('')
   const [rows, setRows] = useState<ImportRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const preview = () => {
     const at = fromKstInputValue(joined)
     if (!at) return setError('가입 시각을 확인하세요.')
-    const parsed = parseNicknameList(text, at)
+    const parsed = parseNicknameList(text, at, job || null)
     if (!parsed.length) return setError('닉네임을 한 줄에 하나씩 붙여넣으세요.')
     setError(null)
     setRows(parsed)
@@ -407,6 +434,17 @@ function BulkImport({ onDone }: { onDone: () => void }) {
           <div className="field mb-0">
             <label htmlFor="bulk-joined">공통 가입 시각 (KST)</label>
             <input id="bulk-joined" className="input" type="datetime-local" value={joined} onChange={(e) => setJoined(e.target.value)} />
+          </div>
+          <div className="field mb-0">
+            <label htmlFor="bulk-job">공통 직업 (선택)</label>
+            <JobSelect
+              id="bulk-job"
+              value={job}
+              onChange={(v) => {
+                setJobValue(v)
+                setRows(null)
+              }}
+            />
           </div>
           <button type="button" className="btn btn--primary" onClick={preview}>
             미리보기
@@ -438,8 +476,8 @@ function CsvImport({ onDone }: { onDone: () => void }) {
   const template = () =>
     downloadBlob(
       csvBlob([
-        ['닉네임', '가입일', '탈퇴일', '별칭'],
-        ['예시닉네임', '2026-01-01', '', '예시별칭1|예시별칭2'],
+        ['닉네임', '가입일', '탈퇴일', '직업'],
+        ['예시닉네임', '2026-01-01', '', '소서리스'],
       ]),
       '하이-길드원-양식.csv',
     )
@@ -447,8 +485,9 @@ function CsvImport({ onDone }: { onDone: () => void }) {
     <>
       <div className="card">
         <p className="card__hint" style={{ marginBottom: 12 }}>
-          첫 줄 머리글: <code>닉네임, 가입일, 탈퇴일, 별칭</code> · 날짜는 <code>YYYY-MM-DD</code> 또는{' '}
-          <code>YYYY-MM-DD HH:mm</code>(한국 시각) · 별칭은 <code>|</code> 로 구분 · UTF-8(엑셀 “CSV UTF-8”) 권장
+          첫 줄 머리글: <code>닉네임, 가입일, 탈퇴일, 직업</code> · 날짜는 <code>YYYY-MM-DD</code> 또는{' '}
+          <code>YYYY-MM-DD HH:mm</code>(한국 시각) · 직업은 {JOBS.join('·')} 중 하나(비워도 됨) · UTF-8(엑셀 “CSV
+          UTF-8”) 권장
         </p>
         <div className="row">
           <label className="btn" htmlFor="csv-file">
@@ -473,8 +512,6 @@ function MemberEditor({ member }: { member: Member }) {
   const roster = useRoster()
   const toast = useToast()
   const [nick, setNick] = useState(member.nickname)
-  const [keepAlias, setKeepAlias] = useState(true)
-  const [alias, setAlias] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -510,17 +547,13 @@ function MemberEditor({ member }: { member: Member }) {
           onSubmit={(e) => {
             e.preventDefault()
             if (!nick.trim() || nick.trim() === member.nickname) return
-            void act(() => renameMember(member.id, nick.trim(), keepAlias), '닉네임을 변경했습니다.')
+            void act(() => renameMember(member.id, nick.trim(), false), '닉네임을 변경했습니다.')
           }}
         >
           <label className="sr-only" htmlFor="ed-nick">
             새 닉네임
           </label>
           <input id="ed-nick" className="input" style={{ maxWidth: 260 }} maxLength={40} value={nick} onChange={(e) => setNick(e.target.value)} />
-          <label className="checkbox small">
-            <input type="checkbox" checked={keepAlias} onChange={(e) => setKeepAlias(e.target.checked)} />
-            이전 닉네임을 OCR 별칭으로 남기기
-          </label>
           <button type="submit" className="btn btn--sm" disabled={busy || !nick.trim() || nick.trim() === member.nickname}>
             변경
           </button>
@@ -529,54 +562,25 @@ function MemberEditor({ member }: { member: Member }) {
       </section>
 
       <section style={{ marginBottom: 18 }}>
-        <h3 className="card__title" style={{ marginBottom: 8 }}>
-          OCR 별칭
+        <h3 className="card__title" style={{ marginBottom: 8 }} id="ed-job-label">
+          직업
         </h3>
-        <ul className="attendee-list" style={{ marginBottom: 8 }}>
-          {member.member_aliases.length === 0 && <li className="small muted">등록된 별칭이 없습니다.</li>}
-          {member.member_aliases.map((a) => (
-            <li key={a.id} className="chip">
-              {a.alias}
-              <button
-                type="button"
-                aria-label={`별칭 ${a.alias} 삭제`}
-                disabled={busy}
-                onClick={() => void act(() => deleteAlias(a.id), '별칭을 삭제했습니다.')}
-              >
-                ✕
-              </button>
-            </li>
+        <div className="segmented" role="group" aria-labelledby="ed-job-label">
+          {JOBS.map((j) => (
+            <button
+              key={j}
+              type="button"
+              aria-pressed={member.job === j}
+              disabled={busy}
+              onClick={() => {
+                if (member.job !== j) void act(() => setJob(member.id, j), `직업을 ${j}(으)로 바꿨습니다.`)
+              }}
+            >
+              {j}
+            </button>
           ))}
-        </ul>
-        <form
-          className="row"
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (!alias.trim()) return
-            const v = alias.trim()
-            void act(async () => {
-              await addAlias(member.id, v)
-              setAlias('')
-            }, '별칭을 추가했습니다.')
-          }}
-        >
-          <label className="sr-only" htmlFor="ed-alias">
-            새 별칭
-          </label>
-          <input
-            id="ed-alias"
-            className="input"
-            style={{ maxWidth: 260 }}
-            maxLength={40}
-            placeholder="OCR이 자주 틀리게 읽는 형태"
-            value={alias}
-            onChange={(e) => setAlias(e.target.value)}
-          />
-          <button type="submit" className="btn btn--sm" disabled={busy || !alias.trim()}>
-            별칭 추가
-          </button>
-        </form>
-        <p className="small muted">별칭은 다른 길드원의 닉네임·별칭과 겹칠 수 없습니다(DB에서 확인).</p>
+        </div>
+        {!member.job && <p className="small muted">아직 직업을 고르지 않았습니다.</p>}
       </section>
 
       <section style={{ marginBottom: 18 }}>

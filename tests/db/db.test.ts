@@ -236,6 +236,24 @@ describe('명단과 별칭', () => {
   })
 })
 
+describe('직업', () => {
+  it('허용된 직업만 저장되고, 등록 RPC 로 함께 저장할 수 있다', async () => {
+    const r = await as(admin, (c) =>
+      c.query(`select * from public.create_members($1::jsonb) as id`, [
+        JSON.stringify([{ nickname: '직업소서', joined_at: '2026-01-01T00:00:00+09:00', job: '소서리스' }]),
+      ]),
+    )
+    const id = r.rows[0].id
+    const row = await as(admin, (c) => c.query('select job from public.members where id = $1', [id]))
+    expect(row.rows[0].job).toBe('소서리스')
+    await as(admin, (c) => c.query(`update public.members set job = '어쌔신' where id = $1`, [id]))
+    await expect(
+      as(admin, (c) => c.query(`update public.members set job = '마법사' where id = $1`, [id])),
+    ).rejects.toThrow(/members_job_allowed/)
+    await as(admin, (c) => c.query(`update public.members set job = null where id = $1`, [id]))
+  })
+})
+
 describe('보스 회차 저장', () => {
   it('같은 날 같은 레벨 두 회차를 저장할 수 있다', async () => {
     const m = await createMember('두회차', '2026-01-01T00:00:00+09:00')

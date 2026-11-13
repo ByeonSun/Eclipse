@@ -5,6 +5,13 @@ export function isBossLevel(n: number): n is BossLevel {
   return (BOSS_LEVELS as readonly number[]).includes(n)
 }
 
+/** 길드원 직업 (DB members_job_allowed 제약과 같은 값) */
+export const JOBS = ['소서리스', '레인저', '파이터', '어쌔신'] as const
+export type Job = (typeof JOBS)[number]
+export function isJob(v: string): v is Job {
+  return (JOBS as readonly string[]).includes(v)
+}
+
 export const APP_TITLE = '하이 | 보스 참여 관리'
 /** 참여율은 길드 전체가 아니라 길드원 개인의 참여도다 */
 export const RATE_BASIS_NOTE = '길드원 개인 참여율 · 등록된 보스 회차 기준'

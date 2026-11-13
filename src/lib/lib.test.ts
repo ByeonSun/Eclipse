@@ -145,16 +145,24 @@ describe('명단 가져오기', () => {
     expect(rows[2].errors[0]).toContain('1행과 중복')
     expect(rows[3].errors[0]).toContain('이미 등록됨')
   })
-  it('CSV 머리글·날짜·별칭을 해석하고 오류 행을 표시한다', () => {
-    const csv = '﻿닉네임,가입일,탈퇴일,별칭\n별빛,2026-01-01,,별1|별2\n달빛,2026/02/30,,\n해,2026-03-01 10:00,2026-02-01,\n'
+  it('CSV 머리글·날짜·직업을 해석하고 오류 행을 표시한다', () => {
+    const csv =
+      '﻿닉네임,가입일,탈퇴일,직업\n별빛,2026-01-01,,소서리스\n달빛,2026/02/30,,\n해,2026-03-01 10:00,2026-02-01,레인저\n구름,2026-03-01,,마법사\n바람,2026-03-01,,\n'
     const { rows, error } = parseMemberCsv(csv)
     expect(error).toBeUndefined()
     const checked = validateImportRows(rows, [])
     expect(checked[0].errors).toEqual([])
-    expect(checked[0].aliases).toEqual(['별1', '별2'])
+    expect(checked[0].job).toBe('소서리스')
     expect(checked[0].joinedAt!.toISOString()).toBe('2025-12-31T15:00:00.000Z')
     expect(checked[1].errors.join()).toContain('가입일 형식 오류')
     expect(checked[2].errors.join()).toContain('탈퇴일은 가입일보다 늦어야')
+    expect(checked[3].errors.join()).toContain('직업은 소서리스·레인저·파이터·어쌔신')
+    expect(checked[4]).toMatchObject({ job: null, errors: [] })
+  })
+
+  it('일괄 붙여넣기는 공통 직업을 모든 행에 넣는다', () => {
+    const rows = parseNicknameList('가\n나', new Date('2026-01-01T00:00:00Z'), '파이터')
+    expect(rows.map((r) => r.job)).toEqual(['파이터', '파이터'])
   })
   it('닉네임 열이 없으면 거부한다', () => {
     expect(parseMemberCsv('이름,가입일\n a,2026-01-01').error).toContain('닉네임')

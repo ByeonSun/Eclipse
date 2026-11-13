@@ -26,7 +26,7 @@
 | `#/runs/<id>` | 회차 상세 (당시 닉네임·현재 닉네임, 수정, 취소·복구) |
 | `#/sheet` | 참여율 시트 (길드원 × 레벨, 기간 필터, 정렬, 셀 클릭 시 계산 내역, CSV 내보내기) |
 | `#/history` | 날짜별 이력 (KST 날짜 범위, 레벨·길드원 필터, 취소 회차 포함 여부) |
-| `#/members` | 길드원 관리 (한 명 등록, 줄바꿈 일괄 등록, CSV 가져오기·내보내기, 별칭, 가입·탈퇴, 비활성) |
+| `#/members` | 길드원 관리 (한 명 등록, 줄바꿈 일괄 등록, CSV 가져오기·내보내기, 직업, 가입·탈퇴, 비활성) |
 | `#/members/<id>` | 개인 참여율 (기간별 전체·레벨별 참여율, 참여 가능 회차 목록) |
 | `#/settings` | 비밀번호 변경(현재 비밀번호 재확인), 로그아웃 |
 
@@ -80,6 +80,7 @@ Supabase 설정이 없으면 연결 안내 화면만 표시되고 예시 데이�
    2. `supabase/migrations/20261113000002_integrity_audit.sql` — 무결성 트리거, 감사 로그, RLS·권한
    3. `supabase/migrations/20261113000003_rpc.sql` — 저장/취소/통계 RPC
    4. `supabase/migrations/20261113000004_fix_safeupdate.sql` — Supabase `pg_safeupdate` 대응(저장 RPC 수정)
+   5. `supabase/migrations/20261113000005_member_job.sql` — 길드원 직업
 
    SQL Editor 가 “RLS 없이 테이블 생성”이나 “destructive operation” 경고를 띄우면: 1번은 “Run and enable RLS”,
    2~4번은 함수 본문의 범위 지정 DELETE·REVOKE 때문이므로 “Run query” 로 진행합니다.
@@ -153,7 +154,8 @@ pg_dump "postgresql://postgres:[DB-PASSWORD]@db.<ref>.supabase.co:5432/postgres"
 
 - `admin_users(user_id → auth.users)` — 관리자 목록. 운영 경로로만 추가/삭제
 - `members(id, nickname, normalized_nickname UNIQUE, archived_at)` — 닉네임과 ID 분리. 정규화 키는 DB가 생성
-- `member_aliases(member_id, alias, normalized_alias UNIQUE)` — OCR 오인식 대응. 닉네임↔별칭 키 충돌은 트리거로 차단
+- `members.job` — 직업(소서리스·레인저·파이터·어쌔신 중 하나, 또는 비움). 길드원 관리에서 선택, CSV `직업` 열 (마이그레이션 5)
+- `member_aliases` — 초기 버전의 OCR 별칭 테이블. 화면에서는 더 이상 쓰지 않으며, 남아 있는 데이터와 매칭 규칙만 유지
 - `membership_periods(member_id, joined_at, left_at)` — `left_at > joined_at`, 같은 길드원 구간 중첩은 배제 제약(`btree_gist`)으로 금지
 - `boss_runs(id, boss_level ∈ {40..85}, occurred_at, note, created_by, updated_by, cancelled_at)` — `id` 는 클라이언트 생성(재시도에도 동일). 날짜+레벨 UNIQUE 없음
 - `attendances(boss_run_id, member_id) PK, nickname_snapshot, match_method ∈ {exact, alias, manual}` — 당시 닉네임 보존
@@ -167,8 +169,7 @@ pg_dump "postgresql://postgres:[DB-PASSWORD]@db.<ref>.supabase.co:5432/postgres"
 
 - Tesseract.js 는 범용 OCR 입니다. 게임 글꼴, 작은 글씨, 반투명 배경, 외곽선·그림자 글씨에서 오인식이 생깁니다.
   예) 합성 이미지 테스트에서 `별빛하나` → `별빚하나`, `검은달_77` → `검은달 77`.
-- 그래서 정확 일치·별칭 일치만 자동 선택하고, 비슷한 글자는 “확인 필요”로 두어 관리자가 직접 연결합니다(자동 확정 없음).
-  자주 틀리는 형태는 별칭으로 등록하면 다음부터 “별칭 일치”로 잡힙니다.
+- 그래서 닉네임 정확 일치만 자동 선택하고, 비슷한 글자는 “확인 필요”로 두어 관리자가 추천 후보나 검색으로 직접 연결합니다(자동 확정 없음).
 - 닉네임 목록 부분만 영역 지정하면 정확도가 올라갑니다. 어두운 배경은 자동으로 반전, 작은 이미지는 2배 확대합니다.
 - 첫 인식 때 OCR 엔진(WASM)과 한국어·영어 데이터(수 MB)를 jsDelivr CDN에서 내려받습니다. 이후에는 브라우저 캐시를 씁니다.
   CDN 접근이 막힌 환경에서는 OCR 이 실패하며, 이때도 수동 입력으로 저장할 수 있습니다.

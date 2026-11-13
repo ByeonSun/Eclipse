@@ -1,3 +1,4 @@
+import { isJob, JOBS, type Job } from './constants'
 import { parseCsv, unescapeFormula } from './csv'
 import { normalizeName } from './normalize'
 import { fromKstInputValue, isValidDateString, kstDateToUtc } from './time'
@@ -7,7 +8,7 @@ export interface ImportRow {
   nickname: string
   joinedAt: Date | null
   leftAt: Date | null
-  aliases: string[]
+  job: Job | null
   errors: string[]
   warnings: string[]
 }
@@ -26,16 +27,16 @@ export function parseKstDateTime(raw: string): Date | null {
   return null
 }
 
-/** 줄바꿈으로 구분된 닉네임 목록 */
-export function parseNicknameList(text: string, joinedAt: Date): ImportRow[] {
+/** 줄바꿈으로 구분된 닉네임 목록 (공통 가입 시각·직업) */
+export function parseNicknameList(text: string, joinedAt: Date, job: Job | null = null): ImportRow[] {
   return text
     .split(/\r?\n/)
     .map((l, i) => ({ l: l.normalize('NFC').trim(), i }))
     .filter(({ l }) => l !== '')
-    .map(({ l, i }) => ({ line: i + 1, nickname: l, joinedAt, leftAt: null, aliases: [], errors: [], warnings: [] }))
+    .map(({ l, i }) => ({ line: i + 1, nickname: l, joinedAt, leftAt: null, job, errors: [], warnings: [] }))
 }
 
-const HEADER_ALIASES: Record<string, 'nickname' | 'joined' | 'left' | 'aliases'> = {
+const HEADER_ALIASES: Record<string, 'nickname' | 'joined' | 'left' | 'job'> = {
   nickname: 'nickname',
   닉네임: 'nickname',
   joined_at: 'joined',
@@ -44,11 +45,11 @@ const HEADER_ALIASES: Record<string, 'nickname' | 'joined' | 'left' | 'aliases'>
   left_at: 'left',
   탈퇴일: 'left',
   탈퇴일시: 'left',
-  aliases: 'aliases',
-  별칭: 'aliases',
+  job: 'job',
+  직업: 'job',
 }
 
-/** CSV: 헤더 필수 (닉네임, 가입일, 탈퇴일, 별칭). 별칭은 | 로 구분 */
+/** CSV: 헤더 필수 (닉네임, 가입일, 탈퇴일, 직업) */
 export function parseMemberCsv(text: string): { rows: ImportRow[]; error?: string } {
   const table = parseCsv(text)
   if (table.length === 0) return { rows: [], error: '내용이 없습니다.' }
@@ -63,20 +64,19 @@ export function parseMemberCsv(text: string): { rows: ImportRow[]; error?: strin
     const nickname = get('nickname').normalize('NFC')
     const joinedRaw = get('joined')
     const leftRaw = get('left')
+    const jobRaw = get('job').normalize('NFC')
     const joinedAt = joinedRaw ? parseKstDateTime(joinedRaw) : null
     const leftAt = leftRaw ? parseKstDateTime(leftRaw) : null
     if (joinedRaw && !joinedAt) errors.push(`가입일 형식 오류: ${joinedRaw}`)
     if (!joinedRaw) errors.push('가입일이 비어 있습니다.')
     if (leftRaw && !leftAt) errors.push(`탈퇴일 형식 오류: ${leftRaw}`)
+    if (jobRaw && !isJob(jobRaw)) errors.push(`직업은 ${JOBS.join('·')} 중 하나여야 합니다: ${jobRaw}`)
     rows.push({
       line: i + 1,
       nickname,
       joinedAt,
       leftAt,
-      aliases: get('aliases')
-        .split('|')
-        .map((a) => a.normalize('NFC').trim())
-        .filter(Boolean),
+      job: jobRaw && isJob(jobRaw) ? jobRaw : null,
       errors,
       warnings: [],
     })
@@ -89,7 +89,7 @@ export interface ExistingName {
   owner: string
 }
 
-/** 공통 검증: 빈 값, 길이, 날짜 순서, 파일 내 중복, 기존 명단/별칭과 충돌 */
+/** 공통 검증: 빈 값, 길이, 날짜 순서, 파일 내 중복, 기존 명단과 충돌 */
 export function validateImportRows(rows: ImportRow[], existing: ExistingName[]): ImportRow[] {
   const taken = new Map(existing.map((e) => [e.key, e.owner]))
   const seen = new Map<string, number>()
@@ -102,15 +102,6 @@ export function validateImportRows(rows: ImportRow[], existing: ExistingName[]):
     if (key && taken.has(key)) errors.push(`이미 등록됨: ${taken.get(key)}`)
     if (key && seen.has(key)) errors.push(`${seen.get(key)}행과 중복`)
     if (key) seen.set(key, row.line)
-    const aliasKeys = new Set<string>()
-    for (const a of row.aliases) {
-      const ak = normalizeName(a)
-      if (ak === key) errors.push(`별칭 "${a}"이(가) 닉네임과 같습니다.`)
-      else if (taken.has(ak)) errors.push(`별칭 "${a}"은(는) 이미 ${taken.get(ak)}에 사용 중`)
-      else if (seen.has(ak) || aliasKeys.has(ak)) errors.push(`별칭 "${a}" 중복`)
-      aliasKeys.add(ak)
-    }
-    for (const ak of aliasKeys) seen.set(ak, row.line)
     return { ...row, errors }
   })
 }
