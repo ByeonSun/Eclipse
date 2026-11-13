@@ -5,6 +5,8 @@
 
 @docs/HANDOFF.md
 
+> **Supabase 연동이 끊겨 있다(2026-11-13, 사용자 요청).** 사이트는 연결 안내만 보여 준다. 다시 연결은 HANDOFF 11장.
+
 ## 바로 쓰는 정보
 - 배포: https://high-guild.github.io/ · 저장소: `high-guild/high-guild.github.io` (main push → Actions 로 자동 배포, 약 35초)
 - Supabase 프로젝트 ref `vprnskylhtqnmaavehoa` (시드니). 운영 DB 변경은 **새 번호 마이그레이션 파일 + SQL Editor 적용**.

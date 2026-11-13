@@ -115,7 +115,7 @@ export function LoginPage() {
           </Notice>
         ) : null}
         <div className="field">
-          <label htmlFor="email">{mode === 'login' ? '아이디 또는 이메일' : '이메일'}</label>
+          <label htmlFor="email">이메일</label>
           <input
             id="email"
             className="input"
@@ -128,12 +128,8 @@ export function LoginPage() {
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder={mode === 'login' ? 'admin' : undefined}
             autoFocus
           />
-          {mode === 'forgot' && (
-            <span className="field__hint">아이디(admin) 계정은 메일 재설정이 되지 않습니다. Supabase 대시보드에서 바꾸세요.</span>
-          )}
         </div>
         {mode === 'login' && (
           <div className="field">

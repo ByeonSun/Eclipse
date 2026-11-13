@@ -3,7 +3,10 @@
 다음에 이 프로젝트를 다시 열었을 때 처음부터 찾지 않도록, 현재 상태·결정 사항·작업 방법·남은 일을 한곳에 모은 문서입니다.
 사용자용 설명(설치·운영 절차)은 [README.md](../README.md)에 있습니다. 이 문서는 **개발을 이어서 하는 사람/Claude** 용입니다.
 
-마지막 정리: 2026-11-13 (커밋 `5051a11` 기준)
+마지막 정리: 2026-11-13
+
+> **현재 Supabase 연동이 끊겨 있습니다 (2026-11-13, 사용자 요청).** 배포 사이트는 "Supabase 연결 설정이 필요합니다" 안내만 보여 줍니다.
+> Supabase 프로젝트와 데이터는 지우지 않았습니다. 다시 쓰려면 아래 [11. 다시 연결하기](#11-supabase-다시-연결하기)를 따르세요.
 
 ---
 
@@ -20,10 +23,12 @@
 | Supabase URL | `https://vprnskylhtqnmaavehoa.supabase.co` (공개값) |
 | 기술 | React 19 + TypeScript 7 + Vite 8, Supabase(Postgres+Auth), Tesseract.js 7, Vitest 5 |
 
-### 2026-11-13 현재 DB 상태
+### 2026-11-13 연동 해제 직전 DB 상태 (Supabase 에 그대로 남아 있음)
 - 계정 1개(이메일 계정), 관리자 1명(그 이메일 계정)
-- **아이디 `admin` 계정은 아직 만들어지지 않음** (`admin@high-guild.github.io` 없음) → 남은 일 참고
+- 아이디 `admin` 계정은 **만들지 않기로 함**(사용자 결정). 아이디 로그인 변환 코드(`src/lib/loginId.ts`)는 남아 있음
 - 길드원 3명(모두 직업 선택됨), 보스 회차 0건, 참여 기록 0건
+- 마이그레이션 1~5 모두 적용됨
+- Free 프로젝트는 일주일 넘게 쓰지 않으면 **일시 정지**됨 → 다시 연결 전에 대시보드에서 Restore 필요할 수 있음
 - 같은 조직에 예전 프로젝트 `ByeonSun's Project`(일시정지)가 있음 — 이 앱과 무관, 건드리지 않음
 
 ---
@@ -44,6 +49,8 @@
 7. **별칭(OCR 별칭) 대신 직업 선택**: 소서리스·레인저·파이터·어쌔신. 별칭 테이블은 데이터 보존 차원에서 DB에 남겨둠(UI에서 제거).
 8. **OCR 대상은 게임 화면 속 캐릭터 머리 위 이름표**(목록 글자가 아님). 이름표 모드를 기본으로.
 9. Supabase/GitHub 모두 무료 플랜 유지 희망(“돈 안 드나?”).
+10. **`admin` 아이디 계정은 만들지 않음.** 로그인 화면 라벨은 다시 "이메일"로 (아이디 변환 코드는 그대로 둠).
+11. **Supabase 연동을 일단 끊음** — 나중에 필요하면 다시 연결. 프로젝트·데이터는 유지.
 
 ---
 
@@ -90,7 +97,8 @@ samples/, public/__samples/   실제 게임 캡처(개인 화면). .gitignore �
 - **PowerShell 세션에 PATH 가 반영 안 돼 있을 수 있음** → 명령 앞에 항상:
   `$env:Path = [Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User")`
 - `gh` 는 ByeonSun 으로 로그인됨(keyring). 원격: `https://github.com/high-guild/high-guild.github.io.git`
-- `.env.local` 에 실제 Supabase URL·공개키가 들어 있음(gitignore). 로컬 `npm run dev` 는 실제 DB에 붙는다 — 테스트 데이터 조심.
+- 로컬 연결값은 `.env.local.disabled` 로 이름을 바꿔 꺼 둠(gitignore). 다시 쓰려면 `.env.local` 로 되돌린다.
+  되돌리면 로컬 `npm run dev` 가 실제 운영 DB에 붙는다 — 테스트 데이터 조심.
 - 개발 서버: `.claude/launch.json` 의 `vite-dev` (port 5173). Claude 브라우저 패널은 `preview_start name=vite-dev`.
 - 명령:
   ```
@@ -108,6 +116,7 @@ samples/, public/__samples/   실제 게임 캡처(개인 화면). .gitignore �
 - `main` 에 push → GitHub Actions(`deploy.yml`) → 약 35초 후 https://high-guild.github.io/ 반영.
   확인: `gh run list --repo high-guild/high-guild.github.io --limit 1`
 - 빌드 환경변수는 저장소 **Variables**(Secrets 아님, 공개값): `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`
+  — **현재 두 값 모두 삭제된 상태**(연동 해제). 없으면 앱은 연결 안내 화면만 보여 준다.
 - `base: './'` + 해시 라우팅이라 루트/하위 경로 모두 동작, 새로고침 404 없음.
 - 배포 후 브라우저 캐시: 확인할 때 페이지 새로고침. 입력 중 화면은 beforeunload 경고가 있으니 자동화에선 navigate force.
 
@@ -217,8 +226,7 @@ Auth 설정: 공개 가입 OFF, Site URL `https://high-guild.github.io/`, Redire
 
 ## 9. 남은 일 (우선순위 순)
 
-1. **아이디 `admin` 계정 생성** — Supabase Users → Add user → `admin@high-guild.github.io` + 비밀번호(사용자 입력) + Auto confirm
-   → SQL 로 admin_users 등록 → 사이트에서 `admin` 로그인 확인. 기존 이메일 관리자는 예비로 둘지 사용자에게 확인.
+1. (사용자가 원할 때) Supabase 다시 연결 — 11장
 2. 실제 캡처 추가 확보(보스전·밤·인원 많은 장면) 후 OCR 재측정·색 범위 조정. 필요하면 흰색 등 이름 색 프로필 추가.
 3. 미검증: 비밀번호 재설정 메일 흐름, 설정 화면 비밀번호 변경, 화면의 회차 취소/복구 버튼, 휴대폰 실기기 화면.
 4. 잡음 "안전"(→아저) 같은 지역 표시 글자 필터(위치나 단어 목록으로) 검토.
@@ -234,3 +242,28 @@ Auth 설정: 공개 가입 OFF, Site URL `https://high-guild.github.io/`, Redire
 - 유사도 결과를 자동 확정하지 않는다 (정확 일치 다수결만 자동 선택).
 - 운영 DB 데이터를 사용자 확인 없이 삭제하지 않는다.
 - 기존 마이그레이션 파일을 고쳐서 해결하지 않는다 (새 번호 파일로).
+
+---
+
+## 11. Supabase 다시 연결하기
+
+연동 해제 때 한 일: ① 저장소 Variables 두 개 삭제 ② 로컬 `.env.local` → `.env.local.disabled` ③ 재배포.
+Supabase 쪽(프로젝트, 데이터, Auth URL 설정, 관리자 등록)은 그대로 두었다. 다시 연결은 그 반대로 하면 된다.
+
+1. Supabase 대시보드에서 `hai-guild` 프로젝트가 일시 정지(Paused) 상태면 **Restore** (사용자 계정 로그인 필요).
+2. Project Settings → API Keys 에서 publishable 키 확인 (아래 값이 그대로면 그대로 사용).
+   - URL: `https://vprnskylhtqnmaavehoa.supabase.co`
+   - 공개키: `sb_publishable_sN8AA0FbMTWJJEiokC5wDw_QM2Mmh6d` (브라우저에 노출되는 공개용 키. RLS 가 데이터를 보호)
+3. 저장소 Variables 다시 등록 후 재배포:
+   ```
+   gh variable set VITE_SUPABASE_URL --repo high-guild/high-guild.github.io --body "https://vprnskylhtqnmaavehoa.supabase.co"
+   gh variable set VITE_SUPABASE_PUBLISHABLE_KEY --repo high-guild/high-guild.github.io --body "<publishable 키>"
+   gh workflow run deploy.yml --repo high-guild/high-guild.github.io --ref main
+   ```
+4. 로컬 개발도 연결하려면 `.env.local.disabled` → `.env.local` 로 이름 변경.
+5. Auth → URL Configuration 이 `https://high-guild.github.io/` / `https://high-guild.github.io/**` 인지 확인.
+6. 새 마이그레이션이 생겼다면 6장 방법으로 SQL Editor 에 적용 후, 상태 확인 쿼리로 확인.
+7. https://high-guild.github.io/ 새로고침 → 로그인 화면 → 이메일 관리자 계정으로 로그인 확인.
+
+새 Supabase 프로젝트로 옮기는 경우: 마이그레이션 1~5 순서대로 적용, 공개 가입 OFF, URL 설정, 관리자 계정 생성 + admin_users 등록,
+위 3번에 새 URL·키. 기존 데이터가 필요하면 README 의 백업·복구 절차.
