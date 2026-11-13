@@ -308,3 +308,6 @@ revoke execute on function public.is_admin(), public.assert_admin(), public.memb
   public.write_audit_log()
   from public, anon, authenticated;
 grant execute on function public.is_admin() to authenticated;
+-- 생성 열·CHECK 제약이 쓰는 정규화 함수 (Supabase 의 "새 테이블 자동 노출"을 꺼도 동작하도록 명시)
+grant execute on function public.normalize_name(text) to authenticated;
+grant usage on schema public to authenticated;
