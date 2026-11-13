@@ -95,12 +95,18 @@ Supabase 설정이 없으면 연결 안내 화면만 표시되고 예시 데이�
 
 웹에는 관리자 등록 API가 없습니다. 아래 운영 절차로만 만듭니다.
 
-1. Authentication → Users → **Add user** → 이메일·비밀번호 입력, “Auto Confirm User” 체크.
-2. SQL Editor에서 실행 (이메일만 바꿔서):
+로그인 칸에는 이메일 또는 **아이디**를 넣을 수 있습니다. 아이디(예: `admin`)는 앱이 `admin@high-guild.github.io` 로 바꿔
+Supabase 에 로그인합니다(`src/lib/loginId.ts`). 이 주소는 실제 메일함이 아니므로 아이디 계정은 “비밀번호 찾기” 메일을 받을 수 없고,
+비밀번호를 잊으면 Supabase 대시보드 → Authentication → Users 에서 바꿉니다.
+
+1. Authentication → Users → **Add user** → **Create new user**
+   - 아이디 계정: Email 에 `admin@high-guild.github.io`, 이메일 계정: 실제 이메일
+   - 비밀번호 입력, “Auto Confirm User” 체크
+2. SQL Editor에서 실행 (주소만 바꿔서):
 
 ```sql
 insert into public.admin_users (user_id)
-select id from auth.users where email = 'admin@example.com';
+select id from auth.users where email = 'admin@high-guild.github.io';
 ```
 
 관리자 해제: `delete from public.admin_users where user_id = (select id from auth.users where email = '...');`

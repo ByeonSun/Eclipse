@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { Notice } from '../components/ui'
 import { Wordmark } from '../components/Wordmark'
 import { errorMessage } from '../lib/errors'
+import { loginDisplayName, loginTarget } from '../lib/loginId'
 import { appBaseUrl, configState, db } from '../lib/supabase'
 
 function Gate({ children }: { children: ReactNode }) {
@@ -68,15 +69,22 @@ export function LoginPage() {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    setBusy(true)
     setError(null)
+    const target = loginTarget(email)
+    if (!target.ok) return setError(target.error)
+    if (mode === 'forgot' && target.isId) {
+      return setError(
+        '아이디로 만든 계정은 메일로 재설정할 수 없습니다. Supabase 대시보드 → Authentication → Users 에서 해당 계정의 비밀번호를 바꾸세요.',
+      )
+    }
+    setBusy(true)
     try {
       if (mode === 'login') {
-        const { error } = await db().auth.signInWithPassword({ email: email.trim(), password })
+        const { error } = await db().auth.signInWithPassword({ email: target.email, password })
         if (error) throw error
         setPassword('')
       } else {
-        const { error } = await db().auth.resetPasswordForEmail(email.trim(), {
+        const { error } = await db().auth.resetPasswordForEmail(target.email, {
           redirectTo: `${appBaseUrl()}?recovery=1`,
         })
         if (error) throw error
@@ -107,17 +115,25 @@ export function LoginPage() {
           </Notice>
         ) : null}
         <div className="field">
-          <label htmlFor="email">이메일</label>
+          <label htmlFor="email">{mode === 'login' ? '아이디 또는 이메일' : '이메일'}</label>
           <input
             id="email"
             className="input"
-            type="email"
+            type="text"
+            inputMode="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             autoComplete="username"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder={mode === 'login' ? 'admin' : undefined}
             autoFocus
           />
+          {mode === 'forgot' && (
+            <span className="field__hint">아이디(admin) 계정은 메일 재설정이 되지 않습니다. Supabase 대시보드에서 바꾸세요.</span>
+          )}
         </div>
         {mode === 'login' && (
           <div className="field">
@@ -279,7 +295,7 @@ export function NotAdminPage({ email, message }: { email: string | null; message
         <Notice tone={message ? 'error' : 'warn'}>
           <p>
             {message ??
-              `${email ?? '이 계정'}은(는) 관리자 목록(admin_users)에 등록되어 있지 않습니다. 관리자 등록은 Supabase 운영 절차로만 할 수 있습니다.`}
+              `${loginDisplayName(email) ?? '이 계정'}은(는) 관리자 목록(admin_users)에 등록되어 있지 않습니다. 관리자 등록은 Supabase 운영 절차로만 할 수 있습니다.`}
           </p>
         </Notice>
         <div className="row">

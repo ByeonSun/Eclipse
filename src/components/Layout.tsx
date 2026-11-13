@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { currentEmail, useAuth } from '../auth/AuthProvider'
+import { isIdAccount, loginDisplayName } from '../lib/loginId'
 import { href, useRoute } from '../lib/router'
 import { Wordmark } from './Wordmark'
 
@@ -37,7 +38,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
         <div className="topbar__user" title={email ?? undefined}>
           <span aria-hidden="true">⚜</span>
-          <span>admin</span>
+          <span>{isIdAccount(email) ? loginDisplayName(email) : 'admin'}</span>
         </div>
       </header>
       <main id="main" tabIndex={-1} style={{ outline: 'none' }}>

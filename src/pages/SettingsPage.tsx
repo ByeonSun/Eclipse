@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { currentEmail, useAuth } from '../auth/AuthProvider'
 import { Notice, useToast } from '../components/ui'
 import { errorMessage } from '../lib/errors'
+import { isIdAccount, loginDisplayName } from '../lib/loginId'
 import { db } from '../lib/supabase'
 import { PasswordFields } from './AuthPages'
 
@@ -47,7 +48,10 @@ export function SettingsPage() {
       <div className="page-head">
         <div>
           <h1>관리자 설정</h1>
-          <p>로그인 계정: {email ?? '-'} (화면 표시명 admin)</p>
+          <p>
+            로그인 {isIdAccount(email) ? '아이디' : '계정'}: {loginDisplayName(email) ?? '-'}
+            {isIdAccount(email) && ' · 비밀번호를 잊으면 Supabase 대시보드에서 재설정합니다'}
+          </p>
         </div>
       </div>
 
