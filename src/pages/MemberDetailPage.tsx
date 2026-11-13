@@ -113,7 +113,7 @@ export function MemberDetailPage({ id }: { id: string }) {
 
       <div className="grid grid--stats" style={{ marginBottom: 14 }} aria-busy={loading}>
         <div className="stat">
-          <div className="stat__label">전체 참여율 ({resolved.label})</div>
+          <div className="stat__label">개인 참여율 · 모든 레벨 ({resolved.label})</div>
           <div className="stat__value">
             {loading && !current ? '…' : formatRate(stats.total.attended, stats.total.eligible)}
             <small>
@@ -127,7 +127,7 @@ export function MemberDetailPage({ id }: { id: string }) {
       <section className="card" aria-labelledby="lv-rates" style={{ marginBottom: 14 }}>
         <div className="card__head">
           <h2 className="card__title" id="lv-rates">
-            레벨별 참여율
+            레벨별 개인 참여율
           </h2>
           <span className="small muted">{RATE_BASIS_NOTE}</span>
         </div>

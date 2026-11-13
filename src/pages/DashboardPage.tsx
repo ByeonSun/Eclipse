@@ -4,7 +4,7 @@ import { PeriodFilter } from '../components/PeriodFilter'
 import { Empty, ErrorNotice, LevelBadge, Loading, useLatest } from '../components/ui'
 import { useRoster } from '../data/RosterProvider'
 import { activeAt, fetchLevelCounts, listRuns, type RunSummary } from '../lib/api'
-import { BOSS_LEVELS, RATE_BASIS_NOTE } from '../lib/constants'
+import { BOSS_LEVELS } from '../lib/constants'
 import { errorMessage } from '../lib/errors'
 import { href, navigate } from '../lib/router'
 import { formatKst, periodToQuery, resolvePeriod, type Period } from '../lib/time'
@@ -126,7 +126,8 @@ export function DashboardPage() {
             })}
           </div>
           <p className="small muted" style={{ margin: '10px 0 0' }}>
-            참여율은 {RATE_BASIS_NOTE}입니다. <a href={href(`/sheet?${periodToQuery(period)}`)}>참여율 시트 보기 →</a>
+            참여율은 길드원 개인별로 계산합니다(등록된 보스 회차 기준).{' '}
+            <a href={href(`/sheet?${periodToQuery(period)}`)}>길드원별 참여율 시트 보기 →</a>
           </p>
         </section>
 

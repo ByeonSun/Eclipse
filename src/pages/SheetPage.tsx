@@ -95,7 +95,7 @@ export function SheetPage() {
   const ariaSort = (key: SortKey) => (sort.key === key ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none')
 
   const exportCsv = () => {
-    const header = ['닉네임', '상태', '전체 참여율', '전체 참여', '전체 가능']
+    const header = ['닉네임', '상태', '개인 참여율(모든 레벨)', '참여(모든 레벨)', '참여 가능(모든 레벨)']
     for (const l of BOSS_LEVELS) header.push(`${l} 참여율`, `${l} 참여`, `${l} 가능`)
     const data = rows.map((r) => {
       const out: (string | number)[] = [
@@ -121,8 +121,8 @@ export function SheetPage() {
         <div>
           <h1>참여율 시트</h1>
           <p>
-            {RATE_BASIS_NOTE} · 셀 = 참여율 · 참여/참여 가능 · 가입 전·탈퇴 후·취소 회차 제외 · 전체 = 전체 참여 횟수 ÷ 전체 참여
-            가능 횟수
+            각 칸은 그 길드원 <strong>개인</strong>의 참여율입니다: 본인이 참여한 회차 ÷ 본인이 재적 중일 때 열린 회차 (가입 전·탈퇴
+            후·취소 회차 제외). “모든 레벨” = 본인의 레벨 합산 횟수로 계산 · 등록된 보스 회차 기준
           </p>
         </div>
         <div className="page-head__actions">
@@ -186,7 +186,7 @@ export function SheetPage() {
                 </th>
                 <th scope="col" className="cell--total" aria-sort={ariaSort('total')} style={{ textAlign: 'center' }}>
                   <button type="button" className="sort-btn" onClick={() => toggleSort('total')}>
-                    전체{sortLabel('total')}
+                    모든 레벨{sortLabel('total')}
                   </button>
                 </th>
                 {BOSS_LEVELS.map((l) => (
@@ -213,7 +213,7 @@ export function SheetPage() {
                     <RateCell
                       total
                       c={r.stats.total}
-                      label={`${r.member.nickname} 전체`}
+                      label={`${r.member.nickname} 모든 레벨`}
                       onClick={() => setCell({ member: r.member, level: 'total' })}
                     />
                     {BOSS_LEVELS.map((l) => (
@@ -282,7 +282,7 @@ function CellDialog({
     <Dialog
       open={!!cell}
       onClose={onClose}
-      title={cell ? `${cell.member.nickname} · ${cell.level === 'total' ? '전체' : `${cell.level}레벨`} 계산 내역` : ''}
+      title={cell ? `${cell.member.nickname} · ${cell.level === 'total' ? '모든 레벨' : `${cell.level}레벨`} 개인 참여율 계산 내역` : ''}
     >
       <p className="small muted" style={{ marginTop: 0 }}>
         {resolved.label} · 재적 중이던 유효 회차만 분모에 들어갑니다.
