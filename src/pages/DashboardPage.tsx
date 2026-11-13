@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MemberSearch } from '../components/MemberSearch'
 import { PeriodFilter } from '../components/PeriodFilter'
+import { WeeklyGuildRate } from '../components/WeeklyGuildRate'
 import { Empty, ErrorNotice, LevelBadge, Loading, useLatest } from '../components/ui'
 import { useRoster } from '../data/RosterProvider'
 import { activeAt, fetchLevelCounts, listRuns, type RunSummary } from '../lib/api'
@@ -71,6 +72,8 @@ export function DashboardPage() {
           </a>
         </div>
       </section>
+
+      <WeeklyGuildRate />
 
       <div className="row row--between" style={{ marginBottom: 12 }}>
         <PeriodFilter value={period} onChange={setPeriod} />

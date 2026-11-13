@@ -71,6 +71,17 @@ export function kstWeekStart(now: Date): Date {
   return new Date(today.getTime() - sinceMonday * DAY_MS)
 }
 
+/**
+ * 주간 범위: KST 월요일 00:00 ~ 다음 월요일 00:00 (= 월~일).
+ * offset 0 = 이번 주, -1 = 지난 주.
+ */
+export function kstWeekRange(offset = 0, now: Date = new Date()): { from: Date; to: Date; label: string } {
+  const from = new Date(kstWeekStart(now).getTime() + offset * 7 * DAY_MS)
+  const to = new Date(from.getTime() + 7 * DAY_MS)
+  const sunday = new Date(to.getTime() - DAY_MS)
+  return { from, to, label: `${formatKst(from).slice(0, 13)} ~ ${formatKst(sunday).slice(0, 13)}` }
+}
+
 /** 이번 달 1일 00:00 KST */
 export function kstMonthStart(now: Date): Date {
   const p = kstParts(now)

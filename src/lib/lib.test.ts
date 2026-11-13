@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { escapeFormula, parseCsv, toCsv, unescapeFormula } from './csv'
 import { parseKstDateTime, parseMemberCsv, parseNicknameList, validateImportRows } from './memberImport'
-import { aggregateStats, formatRate } from './stats'
+import { aggregateGuild, aggregateStats, formatRate } from './stats'
 import {
   formatKst,
   fromKstInputValue,
   kstDayRange,
+  kstWeekRange,
   kstMonthStart,
   kstWeekStart,
   resolvePeriod,
@@ -30,6 +31,22 @@ describe('참여율 표시', () => {
     expect(s.total).toEqual({ attended: 1, eligible: 10 })
     expect(formatRate(s.total.attended, s.total.eligible)).toBe('10.0%') // 단순 평균이면 50.0%
     expect(s.levels[85]).toEqual({ attended: 0, eligible: 0 })
+  })
+
+  it('길드 전체 참여율은 모든 길드원의 횟수 합으로 계산한다 (개인 참여율 평균 아님)', () => {
+    // A: 2회 중 2회(100%), B: 2회 중 0회(0%), C: 가입 전이라 참여 가능 0회 → 행 없음
+    // D: 50레벨 8회 중 2회(25%)
+    const g = aggregateGuild([
+      { member_id: 'A', boss_level: 50, eligible: 2, attended: 2 },
+      { member_id: 'B', boss_level: 50, eligible: 2, attended: 0 },
+      { member_id: 'D', boss_level: 50, eligible: 8, attended: 2 },
+    ])
+    expect(g.total).toEqual({ attended: 4, eligible: 12 })
+    expect(formatRate(g.total.attended, g.total.eligible)).toBe('33.3%') // 개인 평균이면 41.7%
+    expect(g.levels[50]).toEqual({ attended: 4, eligible: 12 })
+    expect(g.members).toBe(3)
+    expect(g.attendingMembers).toBe(2)
+    expect(formatRate(aggregateGuild([]).total.attended, aggregateGuild([]).total.eligible)).toBe('—')
   })
 })
 
@@ -57,6 +74,18 @@ describe('한국 시각', () => {
     expect(fromKstInputValue('2026-02-30T10:00')).toBeNull()
     expect(fromKstInputValue('')).toBeNull()
   })
+  it('주간 범위는 KST 월요일 00:00 ~ 일요일 23:59:59 (다음 월요일 00:00 미만)', () => {
+    const now = new Date('2026-11-15T14:59:59Z') // 일요일 23:59:59 KST
+    const w = kstWeekRange(0, now)
+    expect(w.from.toISOString()).toBe('2026-11-08T15:00:00.000Z') // 11-09(월) 00:00 KST
+    expect(w.to.toISOString()).toBe('2026-11-15T15:00:00.000Z') // 11-16(월) 00:00 KST
+    expect(w.label).toBe('2026-11-09(월) ~ 2026-11-15(일)')
+    const prev = kstWeekRange(-1, now)
+    expect(prev.to.toISOString()).toBe(w.from.toISOString())
+    // 월요일 00:00 KST 가 되면 새 주
+    expect(kstWeekRange(0, new Date('2026-11-15T15:00:00Z')).from.toISOString()).toBe('2026-11-15T15:00:00.000Z')
+  })
+
   it('이번 주/이번 달은 끝을 자르지 않아 방금(현재+몇 분) 저장한 회차도 포함한다', () => {
     const now = new Date('2026-11-13T10:39:00Z') // 19:39 KST
     for (const kind of ['week', 'month'] as const) {

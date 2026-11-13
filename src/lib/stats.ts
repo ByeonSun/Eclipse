@@ -38,6 +38,27 @@ export function emptyStats(): MemberStats {
   return { levels, total: { attended: 0, eligible: 0 } }
 }
 
+/**
+ * 길드 전체 참여율 = 모든 길드원의 참여 횟수 합 ÷ 참여 가능 횟수 합.
+ * (개인 참여율의 단순 평균이 아니다. 재적 기간 밖 회차는 개인 계산과 똑같이 분모에서 빠진다)
+ */
+export function aggregateGuild(rows: StatRow[]): MemberStats & { members: number; attendingMembers: number } {
+  const s = emptyStats()
+  const members = new Set<string>()
+  const attending = new Set<string>()
+  for (const r of rows) {
+    const cell = s.levels[r.boss_level as BossLevel]
+    if (!cell) continue
+    cell.attended += r.attended
+    cell.eligible += r.eligible
+    s.total.attended += r.attended
+    s.total.eligible += r.eligible
+    if (r.eligible > 0) members.add(r.member_id)
+    if (r.attended > 0) attending.add(r.member_id)
+  }
+  return { ...s, members: members.size, attendingMembers: attending.size }
+}
+
 export function aggregateStats(rows: StatRow[]): Map<string, MemberStats> {
   const out = new Map<string, MemberStats>()
   for (const r of rows) {
