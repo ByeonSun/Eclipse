@@ -1008,22 +1008,27 @@ textarea {
   font-weight: 700;
   white-space: nowrap;
   color: #111;
-  background: currentColor;
+  background: var(--mark);
   border-radius: 3px;
 }
 .region__mark--ok {
+  --mark: var(--ok);
   color: var(--ok);
 }
 .region__mark--info {
+  --mark: var(--info);
   color: var(--info);
 }
 .region__mark--warn {
+  --mark: var(--warn);
   color: var(--warn);
 }
 .region__mark--danger {
+  --mark: var(--danger);
   color: var(--danger);
 }
 .region__mark--muted {
+  --mark: var(--muted);
   color: var(--muted);
 }
 
