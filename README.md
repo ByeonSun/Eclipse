@@ -2,7 +2,8 @@
 
 하이 길드의 보스 참여 기록을 남기고 참여율을 계산하는 관리자 전용 웹앱입니다.
 
-- 배포 주소: https://byeonsun.github.io/Eclipse/
+- 배포 주소: https://high-guild.github.io/
+- 저장소: https://github.com/high-guild/high-guild.github.io
 - 프런트엔드: React 19 + TypeScript + Vite 8 (해시 라우팅, GitHub Pages 정적 배포)
 - DB·인증: Supabase PostgreSQL + Supabase Auth (이메일·비밀번호, 공개 회원가입 없음)
 - OCR: Tesseract.js 7 (한국어+영어, 브라우저 Web Worker). 이미지는 서버로 보내지 않습니다.
@@ -86,8 +87,8 @@ Supabase 설정이 없으면 연결 안내 화면만 표시되고 예시 데이�
 3. **공개 회원가입 끄기** — Authentication → Sign In / Providers → Email:
    “Allow new users to sign up” 를 끕니다. (켜져 있어도 admin_users 에 없으면 데이터 접근은 거부되지만, 끄는 것이 안전합니다.)
 4. **URL 설정** — Authentication → URL Configuration
-   - Site URL: `https://byeonsun.github.io/Eclipse/`
-   - Redirect URLs: `https://byeonsun.github.io/Eclipse/**`, 로컬 개발 시 `http://localhost:5173/**`
+   - Site URL: `https://high-guild.github.io/`
+   - Redirect URLs: `https://high-guild.github.io/**`, 로컬 개발 시 `http://localhost:5173/**`
 5. (권장) Authentication → Providers → Email 의 “Secure password change” 를 켭니다.
 
 ### 최초 관리자 만들기
@@ -110,7 +111,7 @@ select id from auth.users where email = 'admin@example.com';
 ### 로그인·비밀번호 복구
 
 - 로그인: 이메일·비밀번호 (`signInWithPassword`)
-- 비밀번호 찾기: 로그인 화면 “비밀번호를 잊으셨나요?” → 재설정 메일 → 링크(`…/Eclipse/?recovery=1&code=…`)를
+- 비밀번호 찾기: 로그인 화면 “비밀번호를 잊으셨나요?” → 재설정 메일 → 링크(`https://high-guild.github.io/?recovery=1&code=…`)를
   **요청한 같은 브라우저**에서 열기 → 새 비밀번호 설정. (PKCE 방식이라 다른 브라우저에서는 열리지 않습니다.)
 - 로그인 상태 비밀번호 변경: 설정 화면에서 현재 비밀번호를 다시 확인한 뒤 변경
 - 기본 Supabase 메일 발송은 시간당 횟수 제한이 있습니다. 운영 시 Authentication → Emails 에서 SMTP 설정을 권장합니다.
@@ -125,7 +126,7 @@ select id from auth.users where email = 'admin@example.com';
    - `VITE_SUPABASE_PUBLISHABLE_KEY`
 3. Actions 탭에서 워크플로를 다시 실행하거나 `main` 에 push
 
-빌드는 상대 경로(`base: './'`)와 해시 라우팅을 써서 `/Eclipse/` 하위 경로와 새로고침에서도 404가 나지 않습니다.
+빌드는 상대 경로(`base: './'`)와 해시 라우팅을 써서 루트 주소나 저장소 하위 경로 어디에 올려도, 새로고침해도 404가 나지 않습니다.
 
 ## 데이터 백업·복구
 
