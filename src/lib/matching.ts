@@ -230,8 +230,34 @@ export function matchOcrLines(index: RosterIndex, lines: OcrToken[], sourceId: s
 // ---------------------------------------------------------------------------
 // 이름표 모드
 // ---------------------------------------------------------------------------
-/** 이름표는 글자가 작고 효과가 많아 추천 기준을 조금 낮춘다 (추천일 뿐, 자동 확정은 아님) */
-export const NAME_TAG_SUGGEST_THRESHOLD = 0.5
+/** 이름표 추천 기준 (OCR 유사도). 추천일 뿐, 자동 확정은 아님 */
+export const NAME_TAG_SUGGEST_THRESHOLD = 0.6
+/** "추천 1순위 모두 적용" 대상: 이 점수 이상이고 2순위와 이만큼 차이 */
+export const CONFIDENT_SUGGESTION = { score: 0.8, margin: 0.1 }
+
+/** 한 줄 읽기에서 비교할 조각: 줄 전체 + 단어·연속 단어 (낱자모·기호뿐인 단어 제외) */
+export function namePieces(norm: string): string[] {
+  const words = norm.split(' ').filter((w) => /[가-힣a-z0-9]/i.test(w) && !/^[ㄱ-ㅎㅏ-ㅣ]+$/.test(w))
+  const out = new Set<string>([norm])
+  for (let size = Math.min(3, words.length); size >= 1; size--) {
+    for (let i = 0; i + size <= words.length; i++) out.add(words.slice(i, i + size).join(' '))
+  }
+  return [...out]
+}
+
+/** 이름처럼 보이는가: 공백·기호 없이 2~16자 */
+function looksLikeName(s: string): boolean {
+  return /^[가-힣A-Za-z0-9_]{2,16}$/.test(s) && /[가-힣A-Za-z]/.test(s)
+}
+
+/** 확인 필요 항목 중 1순위 추천을 믿을 만한가 */
+export function confidentSuggestion(item: MatchItem): Suggestion | null {
+  const [first, second] = item.suggestions
+  if (!first || item.conflict) return null
+  if (first.score < CONFIDENT_SUGGESTION.score) return null
+  if (second && first.score - second.score < CONFIDENT_SUGGESTION.margin) return null
+  return first
+}
 /** 정확 일치로 인정하려면 서로 다른 전처리 결과 중 몇 개가 같은 이름이어야 하는지 */
 export const NAME_TAG_EXACT_VOTES = 2
 
@@ -259,20 +285,23 @@ export function matchNameTag(index: RosterIndex, tag: NameTagInput, opts: { sour
     reads: [...new Set(reads.map((r) => r.cleaned))],
   }
 
-  // 1) 투표
+  // 1) 투표: 각 읽기(또는 그 안의 단어)가 명단 이름과 정확히 같으면 한 표
   const votes = new Map<string, { count: number; via: 'nickname' | 'alias' }>()
   const conflicts: string[] = []
   for (const r of reads) {
-    const hits = index.byKey.get(r.norm) ?? []
-    const people = [...new Set(hits.map((h) => h.memberId))]
-    if (people.length > 1) {
-      conflicts.push(people.map((id) => index.members.get(id)?.nickname ?? id).join(', '))
-      continue
-    }
-    if (people.length === 1) {
-      const prev = votes.get(people[0])
-      const via = hits.some((h) => h.via === 'nickname') ? 'nickname' : 'alias'
-      votes.set(people[0], { count: (prev?.count ?? 0) + 1, via: prev?.via === 'nickname' ? 'nickname' : via })
+    for (const piece of namePieces(r.norm)) {
+      const hits = index.byKey.get(piece) ?? []
+      const people = [...new Set(hits.map((h) => h.memberId))]
+      if (people.length > 1) {
+        conflicts.push(people.map((id) => index.members.get(id)?.nickname ?? id).join(', '))
+        break
+      }
+      if (people.length === 1) {
+        const prev = votes.get(people[0])
+        const via = hits.some((h) => h.via === 'nickname') ? 'nickname' : 'alias'
+        votes.set(people[0], { count: (prev?.count ?? 0) + 1, via: prev?.via === 'nickname' ? 'nickname' : via })
+        break
+      }
     }
   }
   const ranked = [...votes.entries()].sort((a, b) => b[1].count - a[1].count)
@@ -285,15 +314,17 @@ export function matchNameTag(index: RosterIndex, tag: NameTagInput, opts: { sour
 
   // 2) 추천
   const pool = new Map<string, Suggestion>()
-  let bestRead = reads[0]
   let bestScore = -1
+  let bestPiece = reads[0].cleaned
   for (const r of reads) {
-    for (const s of suggest(index, r.norm, 5, NAME_TAG_SUGGEST_THRESHOLD)) {
-      const prev = pool.get(s.memberId)
-      if (!prev || s.score > prev.score) pool.set(s.memberId, s)
-      if (s.score > bestScore) {
-        bestScore = s.score
-        bestRead = r
+    for (const piece of namePieces(r.norm)) {
+      for (const s of suggest(index, piece, 5, NAME_TAG_SUGGEST_THRESHOLD)) {
+        const prev = pool.get(s.memberId)
+        if (!prev || s.score > prev.score) pool.set(s.memberId, s)
+        if (s.score > bestScore) {
+          bestScore = s.score
+          bestPiece = piece === r.norm ? r.cleaned : piece
+        }
       }
     }
   }
@@ -301,8 +332,8 @@ export function matchNameTag(index: RosterIndex, tag: NameTagInput, opts: { sour
   if (suggestions.length || conflicts.length) {
     return {
       ...base,
-      raw: bestRead.cleaned,
-      cleaned: bestRead.cleaned,
+      raw: bestPiece,
+      cleaned: bestPiece,
       status: 'review',
       originalStatus: 'review',
       memberId: null,
@@ -317,7 +348,8 @@ export function matchNameTag(index: RosterIndex, tag: NameTagInput, opts: { sour
   for (const r of reads) counts.set(r.norm, (counts.get(r.norm) ?? 0) + 1)
   const [topNorm, topCount] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]
   const top = reads.find((r) => r.norm === topNorm)!
-  const plausible = topCount >= 2 && [...top.cleaned].length >= 2 && /[가-힣A-Za-z]/.test(top.cleaned)
+  // UI 문구("AI 모드 실행 중...")나 기호 섞인 조각은 이름이 아니므로 버린다
+  const plausible = topCount >= 2 && looksLikeName(top.cleaned)
   if (!plausible) return null
   return {
     ...base,

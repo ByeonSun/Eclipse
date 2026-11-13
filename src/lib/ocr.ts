@@ -194,18 +194,31 @@ function cropScaled(src: HTMLCanvasElement, b: Box, scale: number, pad: number) 
   return { c, g }
 }
 
-/** 확대한 뒤 이름표 색만 검게 */
-function hueVariant(scale: number, pick: (p: NameTagProfile) => ColorRule): Variant['make'] {
+/** 확대한 뒤 이름표 색만 검게. thicken 만큼 획을 1px씩 굵혀 작은 받침이 끊기지 않게 */
+function hueVariant(scale: number, pick: (p: NameTagProfile) => ColorRule, thicken = 0): Variant['make'] {
   return (src, b, p) => {
     const rule = pick(p)
     const { c, g } = cropScaled(src, b, scale, 4)
-    const id = g.getImageData(0, 0, c.width, c.height)
+    const W = c.width
+    const H = c.height
+    const id = g.getImageData(0, 0, W, H)
     const d = id.data
-    for (let i = 0; i < d.length; i += 4) {
+    let on = new Uint8Array(W * H)
+    for (let i = 0, j = 0; i < d.length; i += 4, j++) {
       const [h, s, v] = rgbToHsv(d[i], d[i + 1], d[i + 2])
-      const on = h >= rule.h[0] && h <= rule.h[1] && s >= rule.s[0] && s <= rule.s[1] && v >= rule.v
-      d[i] = d[i + 1] = d[i + 2] = on ? 0 : 255
+      on[j] = h >= rule.h[0] && h <= rule.h[1] && s >= rule.s[0] && s <= rule.s[1] && v >= rule.v ? 1 : 0
     }
+    for (let t = 0; t < thicken; t++) {
+      const next = on.slice()
+      for (let y = 1; y < H - 1; y++) {
+        for (let x = 1; x < W - 1; x++) {
+          const j = y * W + x
+          if (on[j - 1] || on[j + 1] || on[j - W] || on[j + W]) next[j] = 1
+        }
+      }
+      on = next
+    }
+    for (let j = 0; j < W * H; j++) d[j * 4] = d[j * 4 + 1] = d[j * 4 + 2] = on[j] ? 0 : 255
     g.putImageData(id, 0, 0)
     return c
   }
@@ -232,10 +245,12 @@ function otsuVariant(scale: number): Variant['make'] {
   }
 }
 
+// 실제 캡처(2340×1080)를 100%·85%·70% 크기로 바꿔 가며 비교해 고른 조합
 const VARIANTS: Variant[] = [
   { id: 'hue3', make: hueVariant(3, (p) => p.rule) },
-  { id: 'hue4', make: hueVariant(4, (p) => p.rule) },
   { id: 'hueWide3', make: hueVariant(3, (p) => p.relaxed) },
+  { id: 'hueWide4Thick', make: hueVariant(4, (p) => p.relaxed, 1) },
+  { id: 'otsu2', make: otsuVariant(2) },
   { id: 'otsu3', make: otsuVariant(3) },
 ]
 

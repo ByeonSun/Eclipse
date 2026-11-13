@@ -7,7 +7,14 @@ import { useRoster } from '../data/RosterProvider'
 import { activeAt, fetchRun, saveBossRun } from '../lib/api'
 import { ACCEPTED_IMAGE_TYPES, BOSS_LEVELS, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS } from '../lib/constants'
 import { errorMessage, isMembershipConflict } from '../lib/errors'
-import { finalAttendees, matchNameTag, matchOcrLines, type MatchItem } from '../lib/matching'
+import {
+  CONFIDENT_SUGGESTION,
+  confidentSuggestion,
+  finalAttendees,
+  matchNameTag,
+  matchOcrLines,
+  type MatchItem,
+} from '../lib/matching'
 import { cancelOcr, OcrCancelled, ocrStatusLabel, recognizeImage, recognizeNameTags, type Rect } from '../lib/ocr'
 import type { RegionMark } from '../components/RegionSelector'
 import { href, navigate } from '../lib/router'
@@ -268,6 +275,25 @@ export function RecordPage({ editId }: { editId?: string }) {
   }, [allItems, manual, roster.index.members, preset])
   const finalIds = useMemo(() => new Set(final.map((f) => f.memberId)), [final])
   const duplicates = final.filter((f) => f.occurrences > 1).length
+
+  // 1순위 추천이 뚜렷한 확인 필요 항목 (관리자가 버튼으로 한 번에 확인)
+  const confidentItems = useMemo(
+    () =>
+      allItems
+        .filter((it) => it.status === 'review' && !it.memberId)
+        .map((it) => ({ it, s: confidentSuggestion(it) }))
+        .filter((x): x is { it: MatchItem; s: NonNullable<ReturnType<typeof confidentSuggestion>> } => !!x.s),
+    [allItems],
+  )
+  const applyConfident = () => {
+    const pick = new Map(confidentItems.map(({ it, s }) => [it.key, s.memberId]))
+    setShots((xs) =>
+      xs.map((sh) => ({
+        ...sh,
+        items: sh.items.map((it) => (pick.has(it.key) ? { ...it, memberId: pick.get(it.key)!, selected: true } : it)),
+      })),
+    )
+  }
 
   const removeAttendee = (memberId: string) => {
     setManual((m) => m.filter((x) => x !== memberId))
@@ -532,10 +558,27 @@ export function RecordPage({ editId }: { editId?: string }) {
 
           {allItems.length > 0 && (
             <div style={{ marginTop: 16 }}>
-              <div className="card__head">
+              <div className="card__head" style={{ flexWrap: 'wrap' }}>
                 <h2 className="card__title">2. 인식 결과 확인</h2>
                 <span className="small muted">OCR 신뢰도와 닉네임 유사도는 서로 다른 값입니다.</span>
               </div>
+              {confidentItems.length > 0 && (
+                <div className="notice notice--info" style={{ alignItems: 'center' }}>
+                  <span className="notice__icon" aria-hidden="true">
+                    ?
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <p>
+                      확인 필요 중 1순위 추천이 뚜렷한 {confidentItems.length}건:{' '}
+                      {confidentItems.map(({ s }) => s.nickname).join(', ')}
+                    </p>
+                    <p className="small">유사도 {CONFIDENT_SUGGESTION.score * 100}% 이상이고 2순위와 차이가 큰 경우만 묶었습니다.</p>
+                  </div>
+                  <button type="button" className="btn btn--sm btn--primary" onClick={applyConfident}>
+                    추천 1순위 모두 적용
+                  </button>
+                </div>
+              )}
               <ul className="match-list">
                 {allItems.map((it) => (
                   <MatchRow

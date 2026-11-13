@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildRosterIndex, finalAttendees, matchNameTag } from './matching'
+import { buildRosterIndex, confidentSuggestion, finalAttendees, matchNameTag } from './matching'
+import { plainSimilarity, similarity } from './similarity'
 import { detectNameTags, NAME_TAG_PROFILES, otsuThreshold, rgbToHsv } from './nameTags'
 
 const BLUE = NAME_TAG_PROFILES.find((p) => p.id === 'blue')!.rule
@@ -73,6 +74,19 @@ describe('이름표 찾기', () => {
   })
 })
 
+describe('OCR 오류를 고려한 유사도', () => {
+  it('받침 빠짐·비슷한 글자 바뀜은 덜 감점한다', () => {
+    expect(similarity('쿠츠', '쿤츠')).toBeGreaterThan(plainSimilarity('쿠츠', '쿤츠'))
+    expect(similarity('포즈', '폭주')).toBeGreaterThanOrEqual(0.8)
+    expect(similarity('구순표', '구준표')).toBeGreaterThanOrEqual(0.9)
+  })
+  it('관련 없는 이름은 여전히 낮다', () => {
+    expect(similarity('모드', '길동')).toBeLessThan(0.6)
+    expect(similarity('그랑', '구준표')).toBeLessThan(0.4)
+    expect(similarity('같다', '같다')).toBe(1)
+  })
+})
+
 describe('이름표 대조 (실제 캡처에서 읽힌 값)', () => {
   const roster = ['길드원', '지각', '구준표', '쿤츠', '폭주', '그랑', '구준희', '군자'].map((n, i) => ({
     id: `m${i}`,
@@ -105,10 +119,38 @@ describe('이름표 대조 (실제 캡처에서 읽힌 값)', () => {
     expect(r.suggestions[0].nickname).toBe('쿤츠')
   })
 
-  it('빛기둥 위 이름(얼드퀸/합드린…)도 0.5 기준으로 추천 후보에 올린다', () => {
-    const r = m(tag('얼드퀸', '<알드퀸', '합드린', '미드레'))!
+  // 아래 읽기 값은 실제 붙여넣은 캡처(2340×1080)에서 나온 것
+  it('빛기둥 위 이름(일드원/치드원/이드 이 [ 그 뇌)은 길드원을 뚜렷한 1순위로 추천', () => {
+    const r = m(tag('일드원', '치드원', '이드 이 [ 그 뇌', '드원'))!
     expect(r.status).toBe('review')
-    expect(r.suggestions.map((s) => s.nickname)).toContain('길드원')
+    expect(r.suggestions[0].nickname).toBe('길드원')
+    expect(confidentSuggestion(r)?.nickname).toBe('길드원')
+  })
+
+  it('받침이 빠진 읽기(쿠츠, 포즈 7)도 올바른 이름을 1순위로, 비슷한 다른 이름(쿠키·폭풍)보다 높게', () => {
+    const idx2 = buildRosterIndex([...roster, { id: 'x1', nickname: '쿠키', aliases: [] }, { id: 'x2', nickname: '폭풍', aliases: [] }])
+    const kunz = matchNameTag(idx2, tag('쿠츠', '쿠츠', '쿠츠'), { sourceId: 's', key: 'a' })!
+    expect(kunz.status).toBe('review')
+    expect(kunz.suggestions[0].nickname).toBe('쿤츠')
+    const pok = matchNameTag(idx2, tag('포즈 7,', '푸즈 11', '포즈 -', '포즈 고'), { sourceId: 's', key: 'b' })!
+    expect(pok.suggestions[0].nickname).toBe('폭주')
+    expect(pok.suggestions[0].score).toBeGreaterThan(pok.suggestions[1]?.score ?? 0)
+    expect(pok.raw).toBe('포즈')
+  })
+
+  it('UI 문구(AI 모드 실행 중...)는 여러 번 읽혀도 미등록으로 올리지 않는다', () => {
+    expect(m(tag('시 모드 실행 중...', '시] 모드 실행 중...', '^^1 모드 실행 중. ..'))).toBeNull()
+    expect(m(tag('안전!', '안전!'))).toBeNull()
+  })
+
+  it('추천 점수가 높아도 2순위와 비슷하면 일괄 적용 대상이 아니다', () => {
+    const idx3 = buildRosterIndex([
+      { id: 'a', nickname: '별빛하나', aliases: [] },
+      { id: 'b', nickname: '별빛하니', aliases: [] },
+    ])
+    const r = matchNameTag(idx3, tag('별빛하녀', '별빛하녀'), { sourceId: 's', key: 'k' })!
+    expect(r.status).toBe('review')
+    expect(confidentSuggestion(r)).toBeNull()
   })
 
   it('UI 잡음(숫자, 한 글자, 매번 다른 글자)은 버린다', () => {
