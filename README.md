@@ -9,6 +9,8 @@
 - OCR: Tesseract.js 7 (한국어+영어, 브라우저 Web Worker). 이미지는 서버로 보내지 않습니다.
 - 기본 시간대: Asia/Seoul. DB에는 모두 `timestamptz` 로 저장하고 화면에서 KST로 표시합니다.
 
+> 개발을 이어서 할 때는 [docs/HANDOFF.md](docs/HANDOFF.md)(현재 상태·결정 사항·DB 적용법·OCR 근거·남은 일)를 먼저 보세요.
+
 ## 핵심 흐름
 
 관리자 로그인 → 「참여 기록 추가」 → 캡처 붙여넣기(Win+Shift+S → Ctrl+V)·드래그·파일 선택(여러 장 가능)
