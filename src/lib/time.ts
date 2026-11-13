@@ -133,13 +133,15 @@ export interface ResolvedPeriod {
 
 export function resolvePeriod(p: Period, now: Date = new Date()): ResolvedPeriod {
   switch (p.kind) {
+    // 이번 주/이번 달은 시작 시각만 둔다. 저장은 현재+10분까지 허용하므로 끝을 "지금"으로 자르면
+    // 방금 기록한 회차가 빠질 수 있다. 미래 회차는 저장 단계에서 막는다.
     case 'week': {
       const from = kstWeekStart(now)
-      return { from, to: now, label: `이번 주 (${kstDateString(from)} ~ 오늘)`, valid: true }
+      return { from, to: null, label: `이번 주 (${kstDateString(from)} ~ 오늘)`, valid: true }
     }
     case 'month': {
       const from = kstMonthStart(now)
-      return { from, to: now, label: `이번 달 (${kstDateString(from)} ~ 오늘)`, valid: true }
+      return { from, to: null, label: `이번 달 (${kstDateString(from)} ~ 오늘)`, valid: true }
     }
     case 'all':
       return { from: null, to: null, label: '전체 기간', valid: true }

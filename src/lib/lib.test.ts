@@ -57,6 +57,15 @@ describe('한국 시각', () => {
     expect(fromKstInputValue('2026-02-30T10:00')).toBeNull()
     expect(fromKstInputValue('')).toBeNull()
   })
+  it('이번 주/이번 달은 끝을 자르지 않아 방금(현재+몇 분) 저장한 회차도 포함한다', () => {
+    const now = new Date('2026-11-13T10:39:00Z') // 19:39 KST
+    for (const kind of ['week', 'month'] as const) {
+      const p = resolvePeriod({ kind }, now)
+      expect(p.to).toBeNull()
+      expect(p.from!.getTime()).toBeLessThan(now.getTime())
+    }
+  })
+
   it('직접 지정 기간은 종료일 다음날 00:00 미만까지', () => {
     const p = resolvePeriod({ kind: 'custom', start: '2026-11-01', end: '2026-11-13' })
     expect(p.valid).toBe(true)
